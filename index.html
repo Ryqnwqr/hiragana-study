@@ -57,7 +57,7 @@ body{
 /* ── INSTALL BANNER ── */
 #install-banner{
   display:none;
-  position:fixed;bottom:calc(60px + var(--sab));left:50%;
+  position:fixed;bottom:70px;left:50%;
   transform:translateX(-50%);
   background:var(--panel);
   border:1px solid rgba(224,107,139,0.35);
@@ -79,7 +79,7 @@ body{
   position:fixed;
   top:var(--sat);left:var(--sal);
   right:var(--sar);
-  bottom:calc(60px + var(--sab));
+  bottom:60px;
   display:flex;flex-direction:column;align-items:center;
   overflow-y:auto;overflow-x:hidden;
   opacity:0;pointer-events:none;
@@ -90,7 +90,7 @@ body{
 
 /* ── WELCOME SCREEN ── */
 #welcome{
-  bottom:var(--sab); /* full height – no nav */
+  bottom:0; /* full height – no nav */
   justify-content:center;
 }
 .welcome-inner{
@@ -396,20 +396,23 @@ body{
 }
 .reset-btn:active{background:rgba(224,88,88,0.18);}
 
-/* ── BOTTOM NAV ── */
+/* ── BOTTOM NAV ──
+   No safe-area padding here: body is position:fixed;inset:0 so it already
+   fills the whole physical screen, and this fixed bar sits flush at the
+   physical bottom. Its --panel background covers the home-indicator region,
+   and the icons are centred in a flat bar so nothing is crammed or wasted. */
 .bottom-nav{
   position:fixed;bottom:0;left:0;right:0;
-  height:calc(60px + var(--sab));
-  padding-bottom:var(--sab);
+  height:60px;
   background:var(--panel);border-top:1px solid var(--border);
-  display:flex;align-items:flex-start;justify-content:center;
-  gap:60px;z-index:100;padding-top:0;
+  display:flex;align-items:center;justify-content:center;
+  gap:60px;z-index:100;
 }
 .nav-btn{
-  display:flex;flex-direction:column;align-items:center;gap:3px;
+  display:flex;flex-direction:column;align-items:center;gap:4px;
   cursor:pointer;color:var(--sub);
   font-size:10px;letter-spacing:0.06em;
-  transition:color 0.15s;padding:10px 16px 0;
+  transition:color 0.15s;padding:0 16px;
   border-radius:8px;border:none;background:transparent;
   font-family:'Inter',sans-serif;font-weight:500;
   -webkit-tap-highlight-color:transparent;
@@ -424,7 +427,7 @@ body{
 @keyframes fbad{0%{background:radial-gradient(ellipse,rgba(224,88,88,0.18),transparent 70%);opacity:1;}100%{opacity:0;}}
 
 .toast{
-  position:fixed;bottom:calc(72px + var(--sab));left:50%;
+  position:fixed;bottom:72px;left:50%;
   transform:translateX(-50%) translateY(10px);
   background:var(--panel);border:1px solid var(--border);
   border-radius:20px;padding:8px 18px;
