@@ -4,6 +4,26 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
 <title>ひらがな</title>
+<!-- Measure the real env(safe-area-inset-bottom) at runtime and force-set
+     --sab on :root. In iOS standalone (home-screen) PWA mode the value is
+     not available during CSS variable resolution, so pure CSS approaches
+     silently get 0. We measure by creating a 0×0 element whose height IS
+     the inset, read it via getBoundingClientRect(), then fall back to 34px
+     (the universal home-indicator height on all notched iPhones) if we are
+     in standalone mode but env() still returned nothing. -->
+<script>
+(function(){
+  var probe=document.createElement('div');
+  probe.style.cssText='position:fixed;bottom:0;left:0;width:0;height:env(safe-area-inset-bottom,0px);pointer-events:none;visibility:hidden';
+  document.documentElement.appendChild(probe);
+  var sab=probe.getBoundingClientRect().height||0;
+  probe.remove();
+  if(sab===0&&(window.navigator.standalone===true||window.matchMedia('(display-mode:standalone)').matches)){
+    sab=34; // universal home-indicator height on notched iPhones
+  }
+  document.documentElement.style.setProperty('--sab',sab+'px');
+})();
+</script>
 
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -57,7 +77,7 @@ body{
 /* ── INSTALL BANNER ── */
 #install-banner{
   display:none;
-  position:fixed;bottom:calc(70px + env(safe-area-inset-bottom,0px));left:50%;
+  position:fixed;bottom:calc(70px + var(--sab));left:50%;
   transform:translateX(-50%);
   background:var(--panel);
   border:1px solid rgba(224,107,139,0.35);
@@ -79,7 +99,7 @@ body{
   position:fixed;
   top:var(--sat);left:var(--sal);
   right:var(--sar);
-  bottom:calc(60px + env(safe-area-inset-bottom,0px));
+  bottom:calc(60px + var(--sab));
   display:flex;flex-direction:column;align-items:center;
   overflow-y:auto;overflow-x:hidden;
   opacity:0;pointer-events:none;
@@ -410,7 +430,7 @@ body{
      behind the iOS home indicator. box-sizing:content-box means flex
      children are centred in the 60px zone, not the full padded height. */
   height:60px;
-  padding-bottom:env(safe-area-inset-bottom,0px);
+  padding-bottom:var(--sab);
   box-sizing:content-box;
   background:var(--panel);border-top:1px solid var(--border);
   display:flex;align-items:center;justify-content:center;
@@ -435,7 +455,7 @@ body{
 @keyframes fbad{0%{background:radial-gradient(ellipse,rgba(224,88,88,0.18),transparent 70%);opacity:1;}100%{opacity:0;}}
 
 .toast{
-  position:fixed;bottom:calc(72px + env(safe-area-inset-bottom,0px));left:50%;
+  position:fixed;bottom:calc(72px + var(--sab));left:50%;
   transform:translateX(-50%) translateY(10px);
   background:var(--panel);border:1px solid var(--border);
   border-radius:20px;padding:8px 18px;
