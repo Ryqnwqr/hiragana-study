@@ -57,7 +57,7 @@ body{
 /* ── INSTALL BANNER ── */
 #install-banner{
   display:none;
-  position:fixed;bottom:70px;left:50%;
+  position:fixed;bottom:calc(70px + var(--sab));left:50%;
   transform:translateX(-50%);
   background:var(--panel);
   border:1px solid rgba(224,107,139,0.35);
@@ -79,7 +79,7 @@ body{
   position:fixed;
   top:var(--sat);left:var(--sal);
   right:var(--sar);
-  bottom:60px;
+  bottom:calc(60px + var(--sab));
   display:flex;flex-direction:column;align-items:center;
   overflow-y:auto;overflow-x:hidden;
   opacity:0;pointer-events:none;
@@ -397,13 +397,15 @@ body{
 .reset-btn:active{background:rgba(224,88,88,0.18);}
 
 /* ── BOTTOM NAV ──
-   No safe-area padding here: body is position:fixed;inset:0 so it already
-   fills the whole physical screen, and this fixed bar sits flush at the
-   physical bottom. Its --panel background covers the home-indicator region,
-   and the icons are centred in a flat bar so nothing is crammed or wasted. */
+   The bar's height includes the home-indicator inset (--sab) so its --panel
+   background extends all the way to the physical bottom (otherwise the body's
+   dark bg shows through under it as a black strip). The icons are centred
+   across the FULL height — including the inset region — so the bar looks
+   balanced instead of crammed at the top, while the labels still sit clear
+   above the translucent home indicator. */
 .bottom-nav{
   position:fixed;bottom:0;left:0;right:0;
-  height:60px;
+  height:calc(60px + var(--sab));
   background:var(--panel);border-top:1px solid var(--border);
   display:flex;align-items:center;justify-content:center;
   gap:60px;z-index:100;
@@ -427,7 +429,7 @@ body{
 @keyframes fbad{0%{background:radial-gradient(ellipse,rgba(224,88,88,0.18),transparent 70%);opacity:1;}100%{opacity:0;}}
 
 .toast{
-  position:fixed;bottom:72px;left:50%;
+  position:fixed;bottom:calc(72px + var(--sab));left:50%;
   transform:translateX(-50%) translateY(10px);
   background:var(--panel);border:1px solid var(--border);
   border-radius:20px;padding:8px 18px;
