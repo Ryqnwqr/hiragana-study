@@ -221,6 +221,24 @@ body{
 }
 .c-back.shown{opacity:1;transform:scale(1);z-index:2;pointer-events:all;}
 
+/* start / ready card */
+.c-start{
+  background:var(--card-b);border:1px solid rgba(224,107,139,0.12);
+  box-shadow:0 16px 48px rgba(0,0,0,0.6);
+  z-index:1;opacity:0;transform:scale(0.96);
+}
+.c-start.shown{opacity:1;transform:scale(1);z-index:3;}
+.cs-label{
+  font-family:'Noto Sans JP',sans-serif;
+  font-size:22px;font-weight:300;color:var(--sakura);letter-spacing:0.06em;
+}
+.cs-count{font-size:13px;color:var(--sub);margin-top:6px;letter-spacing:0.06em;}
+.cs-hint{
+  position:absolute;bottom:14px;
+  font-size:10px;letter-spacing:0.12em;text-transform:uppercase;
+  color:var(--sub);font-weight:400;
+}
+
 /* timer bar on card front */
 .timer-track{
   position:absolute;top:0;left:0;right:0;height:3px;
@@ -498,6 +516,11 @@ body{
             <span class="sh-got">got it →</span>
           </div>
         </div>
+        <div class="card-face c-start" id="cs">
+          <span class="cs-label" id="cs-label">All</span>
+          <span class="cs-count" id="cs-count">— cards</span>
+          <span class="cs-hint">swipe either way to begin</span>
+        </div>
       </div>
     </div>
 
@@ -629,7 +652,7 @@ if(!STATE.totalRecallTime)STATE.totalRecallTime=0;
 
 // ══ SESSION ═════════════════════════════════
 let activeGroup=ALL,deck=[],currentCard=null;
-let isFlipped=false,sessionStreak=0,sessionCorrect=0,sessionTotal=0,roundSize=0;
+let isFlipped=false,isStartCard=false,sessionStreak=0,sessionCorrect=0,sessionTotal=0,roundSize=0;
 let sessionRecallTotal=0; // sum of recall times this round
 let dotMap={};
 
@@ -742,6 +765,28 @@ function buildDeck(){
   return round;
 }
 
+function showStartCard(){
+  isStartCard=true;isFlipped=false;
+  cancelAnimationFrame(timerRAF);
+  document.getElementById('timer-fill').style.width='0%';
+  document.getElementById('cf').classList.remove('gone');
+  document.getElementById('cb').classList.remove('shown');
+  document.getElementById('cs').classList.add('shown');
+  const card=document.getElementById('card');
+  card.style.transform='';card.style.transition='';card.style.opacity='1';
+  document.getElementById('swipe-overlay').style.opacity='0';
+  document.getElementById('lbl-miss').style.opacity='0';
+  document.getElementById('lbl-got').style.opacity='0';
+  document.getElementById('cs-label').textContent=activeGroup==='All'?'All characters':activeGroup;
+  document.getElementById('cs-count').textContent=roundSize+' card'+(roundSize!==1?'s':'');
+}
+
+function dismissStartCard(){
+  isStartCard=false;
+  document.getElementById('cs').classList.remove('shown');
+  nextCard();
+}
+
 function startRound(){
   deck=buildDeck();roundSize=deck.length;
   sessionRecallTotal=0;
@@ -751,7 +796,7 @@ function startRound(){
   document.getElementById('prog-fill').style.display='';
   document.getElementById('dots-row').style.display='';
   document.getElementById('prog-fill').style.width='0%';
-  renderDots();nextCard();
+  renderDots();showStartCard();
 }
 
 function shuffleDeck(){
@@ -854,37 +899,45 @@ function answer(correct){
     const pt=e.touches?e.touches[0]:e;
     dx=pt.clientX-startX;dy=pt.clientY-startY;
     if(Math.abs(dx)<3&&Math.abs(dy)<3)return;
-    if(!isFlipped)return;
+    if(!isFlipped&&!isStartCard)return;
     if(Math.abs(dy)>Math.abs(dx)*1.5)return;
     didDrag=true;
     e.preventDefault();
     const rot=dx*(TILT/300);
     card.style.transform=`translateX(${dx}px) rotate(${rot}deg)`;
     const ratio=Math.min(Math.abs(dx)/THROW,1);
-    if(dx>0){
+    if(isStartCard){
+      overlay.style.background='rgba(224,107,139,0.18)';
+      lblM.style.opacity='0';lblG.style.opacity='0';
+    }else if(dx>0){
       overlay.style.background='rgba(94,201,138,0.28)';
       lblG.style.opacity=String(ratio);lblM.style.opacity='0';
     }else{
       overlay.style.background='rgba(224,88,88,0.28)';
       lblM.style.opacity=String(ratio);lblG.style.opacity='0';
     }
-    overlay.style.opacity='1';
+    overlay.style.opacity=String(ratio);
   }
   function onUp(){
     if(!dragging)return;dragging=false;
     if(!didDrag){
+      if(isStartCard){dismissStartCard();card.style.transition='';return;}
       if(!isFlipped)flipCard();
       card.style.transition='';
       return;
     }
-    if(!isFlipped){card.style.transition='transform 0.25s ease';card.style.transform='';return;}
+    if(!isFlipped&&!isStartCard){card.style.transition='transform 0.25s ease';card.style.transform='';return;}
     if(Math.abs(dx)>=THROW){
       const dir=dx>0?1:-1;
       card.style.transition='transform 0.25s ease,opacity 0.25s ease';
       card.style.transform=`translateX(${dir*460}px) rotate(${dir*28}deg)`;
       card.style.opacity='0';
       overlay.style.opacity='0';lblM.style.opacity='0';lblG.style.opacity='0';
-      setTimeout(()=>{card.style.transition='';card.style.opacity='1';answer(dir>0);},250);
+      if(isStartCard){
+        setTimeout(()=>{card.style.transition='';card.style.opacity='1';dismissStartCard();},250);
+      }else{
+        setTimeout(()=>{card.style.transition='';card.style.opacity='1';answer(dir>0);},250);
+      }
     }else{
       card.style.transition='transform 0.32s cubic-bezier(0.34,1.56,0.64,1)';
       card.style.transform='';
@@ -902,9 +955,19 @@ function answer(correct){
 })();
 
 document.addEventListener('keydown',e=>{
-  if(e.code==='Space'||e.code==='Enter'){e.preventDefault();if(!isFlipped)flipCard();}
-  if((e.code==='ArrowRight'||e.code==='KeyL')&&isFlipped)answer(true);
-  if((e.code==='ArrowLeft'||e.code==='KeyH')&&isFlipped)answer(false);
+  if(e.code==='Space'||e.code==='Enter'){
+    e.preventDefault();
+    if(isStartCard)dismissStartCard();
+    else if(!isFlipped)flipCard();
+  }
+  if(e.code==='ArrowRight'||e.code==='KeyL'){
+    if(isStartCard)dismissStartCard();
+    else if(isFlipped)answer(true);
+  }
+  if(e.code==='ArrowLeft'||e.code==='KeyH'){
+    if(isStartCard)dismissStartCard();
+    else if(isFlipped)answer(false);
+  }
 });
 
 // ══ UI ══════════════════════════════════════
