@@ -40,6 +40,11 @@
   --sal:env(safe-area-inset-left,0px);
   --sar:env(safe-area-inset-right,0px);
 }
+/* In standalone (home-screen) mode iOS draws the home indicator outside
+   the webview, so the inset would create a double gap. Zero it out. */
+@media (display-mode:standalone){
+  :root{--sab:0px;}
+}
 html{height:100%;background:var(--bg);}
 body{
   background:var(--bg);
