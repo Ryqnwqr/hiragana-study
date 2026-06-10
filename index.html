@@ -45,13 +45,8 @@ body{
   background:var(--bg);
   font-family:'Inter',sans-serif;
   color:var(--text);
-  display:flex;flex-direction:column;align-items:center;
   overflow:hidden;
   height:100dvh;
-  padding-top:var(--sat);
-  padding-bottom:var(--sab);
-  padding-left:var(--sal);
-  padding-right:var(--sar);
   position:relative;
 }
 
@@ -77,7 +72,7 @@ body{
 
 /* ── SCREENS ── */
 .screen{
-  position:absolute;
+  position:fixed;
   top:var(--sat);left:var(--sal);
   right:var(--sar);
   bottom:calc(60px + var(--sab));
@@ -88,6 +83,50 @@ body{
   -webkit-overflow-scrolling:touch;
 }
 .screen.active{opacity:1;pointer-events:all;}
+
+/* ── WELCOME SCREEN ── */
+#welcome{
+  bottom:var(--sab); /* full height – no nav */
+  justify-content:center;
+}
+.welcome-inner{
+  display:flex;flex-direction:column;align-items:center;
+  gap:20px;padding:0 32px;text-align:center;
+  max-width:380px;width:100%;
+}
+.welcome-logo{
+  font-family:'Noto Sans JP',sans-serif;
+  font-size:52px;font-weight:200;color:var(--sakura);letter-spacing:0.04em;
+}
+.welcome-chars{
+  font-family:'Noto Sans JP',sans-serif;
+  font-size:26px;font-weight:200;color:var(--sub);letter-spacing:0.22em;
+}
+.welcome-tagline{font-size:14px;color:var(--text);line-height:1.65;opacity:0.8;}
+.welcome-how{
+  display:flex;flex-direction:column;gap:8px;
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:12px;padding:14px 18px;width:100%;
+}
+.wh-row{font-size:12px;color:var(--sub);line-height:1.5;}
+.wh-color{font-weight:500;}
+.welcome-return{
+  display:flex;gap:0;width:100%;
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:12px;overflow:hidden;
+}
+.wr-item{flex:1;text-align:center;padding:13px 6px;}
+.wr-item+.wr-item{border-left:1px solid var(--border);}
+.wr-val{font-size:20px;font-weight:600;line-height:1;}
+.wr-lbl{font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--sub);margin-top:3px;}
+.welcome-start-btn{
+  padding:14px 52px;border-radius:50px;
+  background:rgba(224,107,139,0.14);border:1px solid rgba(224,107,139,0.4);
+  color:var(--sakura);font-family:'Inter',sans-serif;font-size:15px;font-weight:500;
+  cursor:pointer;letter-spacing:0.04em;transition:all 0.18s;
+  -webkit-tap-highlight-color:transparent;
+}
+.welcome-start-btn:active{background:rgba(224,107,139,0.25);}
 
 /* ══ STUDY SCREEN ══ */
 #study{justify-content:flex-start;padding:0 0 16px;}
@@ -389,8 +428,24 @@ body{
   <p>📲 <strong>Install as an app:</strong> tap the <strong>Share</strong> button in Safari, then <strong>"Add to Home Screen"</strong> for a fullscreen experience.</p>
 </div>
 
+<!-- ══ WELCOME SCREEN ══ -->
+<div class="screen active" id="welcome">
+  <div class="welcome-inner">
+    <div class="welcome-logo">ひらがな</div>
+    <div class="welcome-chars">あいうえお</div>
+    <div class="welcome-tagline">Master hiragana with spaced repetition.<br>Reaction time shapes your mastery score.</div>
+    <div class="welcome-how">
+      <div class="wh-row"><span class="wh-color" style="color:var(--green)">Fast recall</span> earns more mastery per card</div>
+      <div class="wh-row"><span class="wh-color" style="color:var(--gold)">Slow recall</span> earns less — cards stay in rotation longer</div>
+      <div class="wh-row"><span class="wh-color" style="color:var(--red)">Wrong answers</span> always lose 2 points and repeat soon</div>
+    </div>
+    <div class="welcome-return" id="welcome-return" style="display:none"></div>
+    <button class="welcome-start-btn" onclick="startStudy()">Begin studying →</button>
+  </div>
+</div>
+
 <!-- ══ STUDY SCREEN ══ -->
-<div class="screen active" id="study">
+<div class="screen" id="study">
   <div class="study-header">
     <div class="logo">ひらがな</div>
     <div style="display:flex;gap:8px;">
@@ -623,8 +678,15 @@ function goScreen(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  document.getElementById('nav-'+id).classList.add('active');
+  const navBtn=document.getElementById('nav-'+id);
+  if(navBtn)navBtn.classList.add('active');
   if(id==='stats')buildStatsScreen();
+}
+
+function startStudy(){
+  document.querySelector('.bottom-nav').style.display='';
+  goScreen('study');
+  startRound();
 }
 
 // ══ TABS ════════════════════════════════════
@@ -989,7 +1051,26 @@ self.addEventListener('fetch',e=>{
 // ══ BOOT ════════════════════════════════════
 buildGroupTabs();
 updateStats();
-startRound();
+
+// Hide nav until user leaves welcome screen
+document.querySelector('.bottom-nav').style.display='none';
+
+// Populate welcome return-stats if there's existing progress
+(function(){
+  const tot=STATE.totalAnswers;
+  if(tot<1)return;
+  const mastered=Object.values(STATE.scores).filter(v=>v>=7).length;
+  const acc=Math.round(STATE.totalCorrect/tot*100);
+  const spd=fmtSpeed(STATE.totalRecallTime/tot);
+  const el=document.getElementById('welcome-return');
+  el.style.display='flex';
+  el.innerHTML=`
+    <div class="wr-item"><div class="wr-val" style="color:var(--sakura)">${mastered}</div><div class="wr-lbl">Mastered</div></div>
+    <div class="wr-item"><div class="wr-val" style="color:var(--green)">${acc}%</div><div class="wr-lbl">Accuracy</div></div>
+    <div class="wr-item"><div class="wr-val" style="color:var(--gold)">${STATE.bestStreak}</div><div class="wr-lbl">Best streak</div></div>
+    <div class="wr-item"><div class="wr-val" style="color:var(--sub)">${spd}</div><div class="wr-lbl">Avg recall</div></div>
+  `;
+})();
 </script>
 </body>
 </html>
