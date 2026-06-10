@@ -40,19 +40,18 @@
   --sal:env(safe-area-inset-left,0px);
   --sar:env(safe-area-inset-right,0px);
 }
-/* In standalone (home-screen) mode iOS draws the home indicator outside
-   the webview, so the inset would create a double gap. Zero it out. */
-@media (display-mode:standalone){
-  :root{--sab:0px;}
-}
 html{height:100%;background:var(--bg);}
+/* Use a fixed, fully-pinned body instead of 100dvh: in iOS standalone
+   (home-screen app) mode dvh/vh stop above the home indicator, leaving a
+   black strip. position:fixed + inset:0 fills the whole physical screen,
+   and the bottom nav's own padding/background then covers the indicator. */
 body{
   background:var(--bg);
   font-family:'Inter',sans-serif;
   color:var(--text);
   overflow:hidden;
-  height:100dvh;
-  position:relative;
+  position:fixed;
+  inset:0;
 }
 
 /* ── INSTALL BANNER ── */
