@@ -1,3 +1,8 @@
+export type PublicCard = {
+  k: string;
+  group: string;
+};
+
 export type RoundSnapshot = {
   roundId: string;
   group: string;
@@ -8,7 +13,7 @@ export type RoundSnapshot = {
   sessionTotal: number;
   avgRecall: number | null;
   masteredCount: number;
-  currentCard: { k: string; group: string } | null;
+  currentCard: PublicCard | null;
   awaitingStart: boolean;
   revealed: boolean;
   roundComplete: boolean;
@@ -67,10 +72,13 @@ export function resetProgress() {
 }
 
 export function startRound(group: string) {
-  return request<RoundSnapshot & { dotMap: DotMap }>("/api/round", {
+  return request<RoundSnapshot & { dotMap: DotMap; deck: PublicCard[] }>(
+    "/api/round",
+    {
     method: "POST",
-    body: JSON.stringify({ group }),
-  });
+      body: JSON.stringify({ group }),
+    },
+  );
 }
 
 export function beginRound() {
@@ -100,6 +108,7 @@ export function submitAnswer(
     confetti: boolean;
     snapshot: RoundSnapshot;
     dotMap: DotMap;
+    deck: PublicCard[];
     roundComplete: boolean;
   }>("/api/round/answer", {
     method: "POST",
@@ -108,7 +117,7 @@ export function submitAnswer(
 }
 
 export function shuffleRound() {
-  return request<{ snapshot: RoundSnapshot; dotMap: DotMap }>(
+  return request<{ snapshot: RoundSnapshot; dotMap: DotMap; deck: PublicCard[] }>(
     "/api/round/shuffle",
     { method: "POST" },
   );

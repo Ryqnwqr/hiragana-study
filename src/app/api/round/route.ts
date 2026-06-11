@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   buildRoundSnapshot,
+  deckToPublicCards,
   startRound,
 } from "@/lib/round-service";
 import { readSession, writeSession } from "@/lib/session";
@@ -13,8 +14,11 @@ export async function POST(request: Request) {
   const nextSession = startRound(session, group);
   await writeSession(nextSession);
 
+  const round = nextSession.round!;
+
   return NextResponse.json({
     ...buildRoundSnapshot(nextSession, true),
-    dotMap: nextSession.round?.dotMap ?? {},
+    dotMap: round.dotMap,
+    deck: deckToPublicCards(round),
   });
 }

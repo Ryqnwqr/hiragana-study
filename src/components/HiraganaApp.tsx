@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { StudyCard } from "@/components/StudyCard";
 import {
-  beginRound,
   fetchGroups,
   fetchProgress,
   resetProgress,
@@ -12,6 +11,7 @@ import {
   startRound,
   submitAnswer,
   type ProgressResponse,
+  type PublicCard,
   type RoundSnapshot,
 } from "@/lib/client-api";
 import { launchConfetti } from "@/lib/confetti";
@@ -20,19 +20,47 @@ import { fmtSpeed, roundMessage } from "@/lib/format";
 type Screen = "welcome" | "study" | "stats";
 type DotMap = Record<string, "unseen" | "seen" | "good" | "mid" | "bad">;
 
+function optimisticSnapshotAfterAnswer(
+  snapshot: RoundSnapshot,
+  correct: boolean,
+  recallTime: number,
+  nextCard: PublicCard | null,
+): RoundSnapshot {
+  const sessionTotal = snapshot.sessionTotal + 1;
+  const sessionCorrect = correct
+    ? snapshot.sessionCorrect + 1
+    : snapshot.sessionCorrect;
+  const sessionStreak = correct ? snapshot.sessionStreak + 1 : 0;
+  const priorRecallTotal =
+    (snapshot.avgRecall ?? 0) * snapshot.sessionTotal + recallTime;
+
+  return {
+    ...snapshot,
+    currentCard: nextCard,
+    sessionTotal,
+    sessionCorrect,
+    sessionStreak,
+    avgRecall: priorRecallTotal / sessionTotal,
+    remaining: nextCard ? Math.max(0, snapshot.remaining - 1) : 0,
+    revealed: false,
+    roundComplete: !nextCard && sessionTotal > 0,
+  };
+}
+
 export function HiraganaApp() {
   const [screen, setScreen] = useState<Screen>("welcome");
   const [showNav, setShowNav] = useState(false);
   const [groups, setGroups] = useState<string[]>([]);
   const [activeGroup, setActiveGroup] = useState("All");
   const [snapshot, setSnapshot] = useState<RoundSnapshot | null>(null);
+  const [localDeck, setLocalDeck] = useState<PublicCard[]>([]);
   const [dotMap, setDotMap] = useState<DotMap>({});
   const [progress, setProgress] = useState<ProgressResponse | null>(null);
   const [romaji, setRomaji] = useState<string | null>(null);
   const [isFlipped, setIsFlipped] = useState(false);
   const [isStartCard, setIsStartCard] = useState(false);
   const [recallTime, setRecallTime] = useState(0);
-  const [busy, setBusy] = useState(false);
+  const [roundLoading, setRoundLoading] = useState(false);
   const [toast, setToast] = useState("");
   const [flash, setFlash] = useState<"" | "good" | "bad">("");
   const [showBanner, setShowBanner] = useState(false);
@@ -40,12 +68,33 @@ export function HiraganaApp() {
   const cardShownAtRef = useRef(0);
   const confettiRef = useRef<HTMLCanvasElement>(null);
   const toastTimerRef = useRef<number | null>(null);
+  const answerQueueRef = useRef(Promise.resolve());
+  const pendingAnswerRef = useRef<string | null>(null);
 
   const loadProgress = useCallback(async () => {
     const data = await fetchProgress();
     setProgress(data);
     return data;
   }, []);
+
+  const applyRoundData = useCallback(
+    (
+      nextSnapshot: RoundSnapshot,
+      nextDots: DotMap,
+      deck: PublicCard[],
+      awaitingStart = false,
+    ) => {
+      setSnapshot(nextSnapshot);
+      setDotMap(nextDots);
+      setLocalDeck(deck);
+      setIsStartCard(awaitingStart);
+      setIsFlipped(false);
+      setRomaji(null);
+      setRecallTime(0);
+      pendingAnswerRef.current = null;
+    },
+    [],
+  );
 
   useEffect(() => {
     void (async () => {
@@ -73,39 +122,148 @@ export function HiraganaApp() {
     cardShownAtRef.current = Date.now();
   }, [snapshot?.currentCard?.k, isStartCard, isFlipped, snapshot]);
 
+  const showToast = useCallback((message: string) => {
+    setToast(message);
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => setToast(""), 2200);
+  }, []);
+
+  const flashFeedback = useCallback((ok: boolean) => {
+    setFlash(ok ? "good" : "bad");
+    window.setTimeout(() => setFlash(""), 400);
+  }, []);
+
+  const runRound = useCallback(
+    async (group: string) => {
+      setRoundLoading(true);
+      try {
+        const data = await startRound(group);
+        applyRoundData(data, data.dotMap, data.deck, true);
+      } finally {
+        setRoundLoading(false);
+      }
+    },
+    [applyRoundData],
+  );
+
+  const dismissStartCard = useCallback(() => {
+    setIsStartCard(false);
+  }, []);
+
+  const handleFlip = useCallback(() => {
+    if (!snapshot?.currentCard || isFlipped || pendingAnswerRef.current) return;
+
+    const kana = snapshot.currentCard.k;
+    const elapsed = Math.min((Date.now() - cardShownAtRef.current) / 1000, 60);
+
+    setRecallTime(elapsed);
+    setIsFlipped(true);
+    setRomaji(null);
+
+    void revealCard(kana)
+      .then((result) => {
+        setRomaji(result.romaji);
+        setDotMap(result.dotMap);
+      })
+      .catch(() => {
+        setIsFlipped(false);
+        showToast("Could not reveal card");
+      });
+  }, [isFlipped, showToast, snapshot?.currentCard]);
+
+  const handleAnswer = useCallback(
+    (correct: boolean) => {
+      if (!snapshot?.currentCard || !isFlipped) return;
+
+      const kana = snapshot.currentCard.k;
+      if (pendingAnswerRef.current === kana) return;
+      pendingAnswerRef.current = kana;
+
+      const answeredRecall = recallTime;
+      const nextDeck = localDeck.slice(1);
+      const nextCard = nextDeck[0] ?? null;
+
+      flashFeedback(correct);
+      setLocalDeck(nextDeck);
+      setSnapshot((prev) =>
+        prev
+          ? optimisticSnapshotAfterAnswer(
+              prev,
+              correct,
+              answeredRecall,
+              nextCard,
+            )
+          : prev,
+      );
+      setIsFlipped(false);
+      setRomaji(null);
+
+      const optimisticDot: DotMap[string] = correct ? "good" : "bad";
+      setDotMap((prev) => ({ ...prev, [kana]: optimisticDot }));
+
+      answerQueueRef.current = answerQueueRef.current
+        .then(async () => {
+          const result = await submitAnswer(kana, correct, answeredRecall);
+          setSnapshot(result.snapshot);
+          setDotMap(result.dotMap);
+          setLocalDeck(result.deck);
+
+          if (result.confetti) launchConfetti(confettiRef.current);
+          void loadProgress();
+        })
+        .catch(() => {
+          showToast("Could not save answer — refreshing round");
+          void runRound(activeGroup);
+        })
+        .finally(() => {
+          if (pendingAnswerRef.current === kana) {
+            pendingAnswerRef.current = null;
+          }
+        });
+    },
+    [
+      activeGroup,
+      flashFeedback,
+      isFlipped,
+      localDeck,
+      loadProgress,
+      recallTime,
+      runRound,
+      showToast,
+      snapshot,
+    ],
+  );
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (screen !== "study" || busy) return;
+      if (screen !== "study" || roundLoading) return;
 
       if (event.code === "Space" || event.code === "Enter") {
         event.preventDefault();
-        if (isStartCard) void dismissStartCard();
-        else if (!isFlipped) void handleFlip();
+        if (isStartCard) dismissStartCard();
+        else if (!isFlipped) handleFlip();
       }
       if (event.code === "ArrowRight" || event.code === "KeyL") {
-        if (isStartCard) void dismissStartCard();
-        else if (isFlipped) void handleAnswer(true);
+        if (isStartCard) dismissStartCard();
+        else if (isFlipped) handleAnswer(true);
       }
       if (event.code === "ArrowLeft" || event.code === "KeyH") {
-        if (isStartCard) void dismissStartCard();
-        else if (isFlipped) void handleAnswer(false);
+        if (isStartCard) dismissStartCard();
+        else if (isFlipped) handleAnswer(false);
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  });
-
-  const showToast = (message: string) => {
-    setToast(message);
-    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = window.setTimeout(() => setToast(""), 2200);
-  };
-
-  const flashFeedback = (ok: boolean) => {
-    setFlash(ok ? "good" : "bad");
-    window.setTimeout(() => setFlash(""), 400);
-  };
+  }, [
+    dismissStartCard,
+    handleAnswer,
+    handleFlip,
+    isFlipped,
+    isStartCard,
+    roundLoading,
+    screen,
+  ]);
 
   const goScreen = async (next: Screen) => {
     setScreen(next);
@@ -120,95 +278,17 @@ export function HiraganaApp() {
     await runRound(activeGroup);
   };
 
-  const runRound = async (group: string) => {
-    setBusy(true);
-    try {
-      const data = await startRound(group);
-      setSnapshot(data);
-      setDotMap(data.dotMap);
-      setIsStartCard(true);
-      setIsFlipped(false);
-      setRomaji(null);
-      setRecallTime(0);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const dismissStartCard = async () => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      const { snapshot: nextSnapshot, dotMap: nextDots } = await beginRound();
-      setSnapshot(nextSnapshot);
-      setDotMap(nextDots);
-      setIsStartCard(false);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleFlip = async () => {
-    if (!snapshot?.currentCard || isFlipped || busy) return;
-    const elapsed = Math.min((Date.now() - cardShownAtRef.current) / 1000, 60);
-    setBusy(true);
-    try {
-      const result = await revealCard(snapshot.currentCard.k);
-      setRomaji(result.romaji);
-      setRecallTime(elapsed);
-      setSnapshot(result.snapshot);
-      setDotMap(result.dotMap);
-      setIsFlipped(true);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleAnswer = async (correct: boolean) => {
-    if (!snapshot?.currentCard || !isFlipped || busy) return;
-    setBusy(true);
-    try {
-      const result = await submitAnswer(
-        snapshot.currentCard.k,
-        correct,
-        recallTime,
-      );
-      flashFeedback(correct);
-      setSnapshot(result.snapshot);
-      setDotMap(result.dotMap);
-      setIsFlipped(false);
-      setRomaji(null);
-
-      if (result.confetti) launchConfetti(confettiRef.current);
-      if (result.roundComplete) {
-        setIsStartCard(false);
-      } else {
-        window.setTimeout(() => {
-          setSnapshot(result.snapshot);
-        }, 0);
-      }
-
-      await loadProgress();
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const handleShuffle = async () => {
-    if (busy) return;
-    setBusy(true);
+    if (roundLoading) return;
+    setRoundLoading(true);
     try {
       const result = await shuffleRound();
-      setSnapshot(result.snapshot);
-      setDotMap(result.dotMap);
-      setIsFlipped(false);
-      setRomaji(null);
-      setIsStartCard(false);
+      applyRoundData(result.snapshot, result.dotMap, result.deck, false);
       showToast("Deck shuffled");
     } catch {
       await runRound(activeGroup);
     } finally {
-      setBusy(false);
+      setRoundLoading(false);
     }
   };
 
@@ -222,6 +302,7 @@ export function HiraganaApp() {
     await resetProgress();
     await loadProgress();
     setSnapshot(null);
+    setLocalDeck([]);
     setDotMap({});
     showToast("Progress reset");
   };
@@ -238,6 +319,7 @@ export function HiraganaApp() {
       : 0;
 
   const dotEntries = Object.entries(dotMap);
+  const displayCard = snapshot?.currentCard;
 
   return (
     <>
@@ -337,7 +419,7 @@ export function HiraganaApp() {
               className="btn-icon"
               title="Shuffle"
               onClick={() => void handleShuffle()}
-              disabled={busy}
+              disabled={roundLoading}
             >
               ⇄
             </button>
@@ -351,7 +433,7 @@ export function HiraganaApp() {
                 key={name}
                 className={`gtab ${name === activeGroup ? "active" : ""}`}
                 onClick={() => void handleGroupChange(name)}
-                disabled={busy}
+                disabled={roundLoading}
               >
                 {name}
               </button>
@@ -387,20 +469,21 @@ export function HiraganaApp() {
         </div>
 
         <div className="arena">
-          {!roundComplete && snapshot?.currentCard && (
+          {!roundComplete && displayCard && (
             <StudyCard
-              kana={isStartCard ? "あ" : snapshot.currentCard.k}
-              group={snapshot.currentCard.group}
+              key={isStartCard ? "start" : displayCard.k}
+              cardKey={isStartCard ? "start" : displayCard.k}
+              kana={isStartCard ? "あ" : displayCard.k}
+              group={displayCard.group}
               romaji={romaji}
               isFlipped={isFlipped}
               isStartCard={isStartCard}
               recallTime={recallTime}
-              roundLabel={snapshot.group}
-              roundSize={snapshot.roundSize}
-              disabled={busy}
-              onFlip={() => void handleFlip()}
-              onAnswer={(correct) => void handleAnswer(correct)}
-              onDismissStart={() => void dismissStartCard()}
+              roundLabel={snapshot?.group ?? activeGroup}
+              roundSize={snapshot?.roundSize ?? localDeck.length}
+              onFlip={handleFlip}
+              onAnswer={handleAnswer}
+              onDismissStart={dismissStartCard}
             />
           )}
 

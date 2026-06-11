@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { buildRoundSnapshot, submitAnswer } from "@/lib/round-service";
+import {
+  buildRoundSnapshot,
+  deckToPublicCards,
+  submitAnswer,
+} from "@/lib/round-service";
 import { readSession, writeSession } from "@/lib/session";
 
 export async function POST(request: Request) {
@@ -31,12 +35,15 @@ export async function POST(request: Request) {
 
     const snapshot = buildRoundSnapshot(nextSession, false);
 
+    const round = nextSession.round;
+
     return NextResponse.json({
       reinserted,
       confetti,
       snapshot,
-      dotMap: nextSession.round?.dotMap ?? {},
-      roundComplete: !nextSession.round?.deck.length,
+      dotMap: round?.dotMap ?? {},
+      deck: round ? deckToPublicCards(round) : [],
+      roundComplete: !round?.deck.length,
     });
   } catch (error) {
     return NextResponse.json(

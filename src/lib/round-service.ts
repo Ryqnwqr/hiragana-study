@@ -35,10 +35,20 @@ function toPublicCard(card: HiraganaCard): PublicCard {
 
 function currentCardFromRound(round: ActiveRound): PublicCard | null {
   if (!round.deck.length) return null;
-  const k = round.deck[0];
-  const cards = getCardsForGroup(round.group);
-  const match = cards.find((card) => card.k === k);
-  return match ? { k: match.k, group: match.group } : { k, group: round.group };
+  return publicCardFromKana(round.deck[0], round.group);
+}
+
+export function publicCardFromKana(
+  kana: string,
+  group: string,
+): PublicCard {
+  const cards = getCardsForGroup(group);
+  const match = cards.find((card) => card.k === kana);
+  return match ? { k: match.k, group: match.group } : { k: kana, group };
+}
+
+export function deckToPublicCards(round: ActiveRound): PublicCard[] {
+  return round.deck.map((kana) => publicCardFromKana(kana, round.group));
 }
 
 export function buildRoundSnapshot(
