@@ -1,0 +1,10 @@
+{
+  "name": "ひらがな",
+  "short_name": "ひらがな",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0c0e14",
+  "theme_color": "#0c0e14",
+  "orientation": "portrait",
+  "description": "Hiragana flashcard app with spaced repetition and reaction-time scoring"
+}
