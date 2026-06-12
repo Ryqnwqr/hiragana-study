@@ -2,6 +2,7 @@
 
 import type { User } from "@supabase/supabase-js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AuthHeaderButton } from "@/components/AuthHeaderButton";
 import { AuthPrompt } from "@/components/AuthPrompt";
 import { StudyCard } from "@/components/StudyCard";
 import {
@@ -9,7 +10,6 @@ import {
   fetchProgress,
   resetProgress,
   revealCard,
-  shuffleRound,
   startRound,
   submitAnswer,
   syncAuthProgress,
@@ -67,6 +67,7 @@ export function HiraganaApp() {
   const serverDeckRef = useRef<PublicCard[]>([]);
   const revealRequestRef = useRef(0);
   const authPromptDismissedRef = useRef(false);
+  const authFromStartCardRef = useRef(false);
 
   const loadProgress = useCallback(async () => {
     const data = await fetchProgress();
@@ -167,13 +168,23 @@ export function HiraganaApp() {
     [applyRoundData],
   );
 
+  const openAuthPrompt = useCallback((fromStartCard = false) => {
+    authFromStartCardRef.current = fromStartCard;
+    setShowAuthPrompt(true);
+  }, []);
+
   const dismissAuthPrompt = useCallback(() => {
-    authPromptDismissedRef.current = true;
+    if (authFromStartCardRef.current) {
+      authPromptDismissedRef.current = true;
+      setIsStartCard(false);
+    }
+    authFromStartCardRef.current = false;
     setShowAuthPrompt(false);
-    setIsStartCard(false);
   }, []);
 
   const handleAuthSuccess = useCallback(async () => {
+    const fromStartCard = authFromStartCardRef.current;
+    authFromStartCardRef.current = false;
     setShowAuthPrompt(false);
     try {
       await syncAuthProgress();
@@ -182,7 +193,7 @@ export function HiraganaApp() {
     } catch {
       showToast("Signed in, but sync failed");
     }
-    setIsStartCard(false);
+    if (fromStartCard) setIsStartCard(false);
   }, [loadProgress, showToast]);
 
   const dismissStartCard = useCallback(() => {
@@ -192,8 +203,8 @@ export function HiraganaApp() {
       setIsStartCard(false);
       return;
     }
-    setShowAuthPrompt(true);
-  }, [authChecked, user]);
+    openAuthPrompt(true);
+  }, [authChecked, openAuthPrompt, user]);
 
   const handleSignOut = useCallback(async () => {
     const supabase = createClient();
@@ -338,20 +349,6 @@ export function HiraganaApp() {
     await runRound(activeGroup);
   };
 
-  const handleShuffle = async () => {
-    if (roundLoading) return;
-    setRoundLoading(true);
-    try {
-      const result = await shuffleRound();
-      applyRoundData(result.snapshot, result.dotMap, result.deck, false);
-      showToast("Deck shuffled");
-    } catch {
-      await runRound(activeGroup);
-    } finally {
-      setRoundLoading(false);
-    }
-  };
-
   const handleGroupChange = async (group: string) => {
     setActiveGroup(group);
     await runRound(group);
@@ -386,6 +383,13 @@ export function HiraganaApp() {
       <div id="flash" className={flash ? `f-${flash}` : ""} />
       <div className={`toast ${toast ? "show" : ""}`}>{toast}</div>
       <canvas id="confetti" ref={confettiRef} />
+
+      <AuthHeaderButton
+        user={user}
+        authChecked={authChecked}
+        onSignIn={() => openAuthPrompt(false)}
+        onSignOut={() => void handleSignOut()}
+      />
 
       {showAuthPrompt && (
         <AuthPrompt onDismiss={dismissAuthPrompt} onSuccess={handleAuthSuccess} />
@@ -481,16 +485,6 @@ export function HiraganaApp() {
           <div className="logo">
             <AppMark size={24} />
             <span>ひらがな</span>
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              className="btn-icon"
-              title="Shuffle"
-              onClick={() => void handleShuffle()}
-              disabled={roundLoading}
-            >
-              ⇄
-            </button>
           </div>
         </div>
 
@@ -611,11 +605,6 @@ export function HiraganaApp() {
       <div className={`screen stats-screen ${screen === "stats" ? "active" : ""}`}>
         <div className="stats-screen-header">
           <h2>Your progress</h2>
-          {user ? (
-            <button type="button" className="account-chip" onClick={() => void handleSignOut()}>
-              {user.email?.split("@")[0] ?? "Account"} · Sign out
-            </button>
-          ) : null}
         </div>
         <div className="summary-grid">
           <div className="sum-card">

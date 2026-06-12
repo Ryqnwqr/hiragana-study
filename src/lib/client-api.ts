@@ -121,9 +121,3 @@ export function submitAnswer(
   });
 }
 
-export function shuffleRound() {
-  return request<{ snapshot: RoundSnapshot; dotMap: DotMap; deck: PublicCard[] }>(
-    "/api/round/shuffle",
-    { method: "POST" },
-  );
-}

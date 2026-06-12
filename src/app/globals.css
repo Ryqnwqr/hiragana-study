@@ -252,6 +252,58 @@ body {
   letter-spacing: 0.04em;
 }
 
+.app-auth-bar {
+  position: fixed;
+  top: calc(12px + var(--sat));
+  right: calc(16px + var(--sar));
+  z-index: 450;
+}
+
+.auth-header-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(19, 21, 31, 0.92);
+  backdrop-filter: blur(8px);
+  color: var(--text);
+  font-family: "Inter", sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  max-width: min(52vw, 220px);
+}
+
+.auth-header-btn--ghost {
+  visibility: hidden;
+  pointer-events: none;
+  min-width: 88px;
+  min-height: 36px;
+}
+
+.auth-header-btn:active {
+  border-color: rgba(224, 107, 139, 0.4);
+}
+
+.auth-header-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--sub);
+}
+
+.auth-header-sep {
+  color: var(--sub);
+  opacity: 0.55;
+}
+
+.auth-header-action {
+  color: var(--sakura);
+  flex-shrink: 0;
+}
+
 .study-header .btn-icon {
   width: 36px;
   height: 36px;
@@ -1181,26 +1233,6 @@ body {
 
 .auth-skip:active {
   color: var(--text);
-}
-
-.account-chip {
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--sub);
-  font-family: "Inter", sans-serif;
-  font-size: 11px;
-  cursor: pointer;
-  max-width: 46%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.account-chip:active {
-  color: var(--text);
-  border-color: rgba(224, 107, 139, 0.35);
 }
 
 @keyframes fbad {
