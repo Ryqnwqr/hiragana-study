@@ -20,25 +20,28 @@ export function mergeProgress(
 
     const localSeen = local.allTimeSeen[kana] ?? 0;
     const remoteSeen = remote.allTimeSeen[kana] ?? 0;
-    const totalSeen = localSeen + remoteSeen;
+    const totalSeen = Math.max(localSeen, remoteSeen);
     if (totalSeen > 0) merged.allTimeSeen[kana] = totalSeen;
 
     const localTime = local.avgTimes[kana];
     const remoteTime = remote.avgTimes[kana];
     if (localTime == null && remoteTime == null) {
       merged.avgTimes[kana] = null;
+    } else if (localTime == null) {
+      merged.avgTimes[kana] = remoteTime;
+    } else if (remoteTime == null) {
+      merged.avgTimes[kana] = localTime;
     } else {
       merged.avgTimes[kana] =
-        ((localTime ?? 0) * localSeen + (remoteTime ?? 0) * remoteSeen) /
-        Math.max(totalSeen, 1);
+        localSeen >= remoteSeen ? localTime : remoteTime;
     }
   }
 
   return normalizeProgress({
     ...merged,
-    totalAnswers: local.totalAnswers + remote.totalAnswers,
-    totalCorrect: local.totalCorrect + remote.totalCorrect,
+    totalAnswers: Math.max(local.totalAnswers, remote.totalAnswers),
+    totalCorrect: Math.max(local.totalCorrect, remote.totalCorrect),
     bestStreak: Math.max(local.bestStreak, remote.bestStreak),
-    totalRecallTime: local.totalRecallTime + remote.totalRecallTime,
+    totalRecallTime: Math.max(local.totalRecallTime, remote.totalRecallTime),
   });
 }

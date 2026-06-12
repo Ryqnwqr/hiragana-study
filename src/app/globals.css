@@ -369,6 +369,11 @@ body {
   color: var(--sakura);
 }
 
+.gtab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .stats-row {
   display: flex;
   gap: 0;

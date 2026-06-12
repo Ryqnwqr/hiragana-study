@@ -58,6 +58,7 @@ export function HiraganaApp() {
   const [user, setUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [showAuthPrompt, setShowAuthPrompt] = useState(false);
+  const [syncPending, setSyncPending] = useState(false);
 
   const sortedMastery = useMemo(
     () => sortMasteryCells(progress?.mastery ?? [], masterySort),
@@ -69,7 +70,7 @@ export function HiraganaApp() {
   const toastTimerRef = useRef<number | null>(null);
   const answerQueueRef = useRef(Promise.resolve());
   const pendingAnswerRef = useRef<string | null>(null);
-  const serverDeckRef = useRef<PublicCard[]>([]);
+  const activeRoundIdRef = useRef<string | null>(null);
   const revealRequestRef = useRef(0);
   const authPromptDismissedRef = useRef(false);
   const authFromStartCardRef = useRef(false);
@@ -102,12 +103,21 @@ export function HiraganaApp() {
       setRomaji(null);
       setRecallTime(0);
       pendingAnswerRef.current = null;
-      serverDeckRef.current = deck;
+      setSyncPending(false);
+      activeRoundIdRef.current = nextSnapshot.roundId;
       answerQueueRef.current = Promise.resolve();
       revealRequestRef.current += 1;
     },
     [],
   );
+
+  const drainRoundSync = useCallback(async () => {
+    revealRequestRef.current += 1;
+    await answerQueueRef.current.catch(() => {});
+    answerQueueRef.current = Promise.resolve();
+    pendingAnswerRef.current = null;
+    setSyncPending(false);
+  }, []);
 
   useEffect(() => {
     const supabase = createClient();
@@ -197,6 +207,7 @@ export function HiraganaApp() {
       if (roundBusyRef.current) return;
       roundBusyRef.current = true;
       try {
+        await drainRoundSync();
         const data = await startRound(group);
         applyRoundData(data, data.dotMap, data.deck, true);
       } catch {
@@ -205,7 +216,7 @@ export function HiraganaApp() {
         roundBusyRef.current = false;
       }
     },
-    [applyRoundData, showToast],
+    [applyRoundData, drainRoundSync, showToast],
   );
 
   const openAuthPrompt = useCallback((fromStartCard = false) => {
@@ -262,6 +273,7 @@ export function HiraganaApp() {
   const handleSignOut = useCallback(() => {
     const supabase = createClient();
     clearAuthSessionPolicy();
+    activeRoundIdRef.current = null;
     setUser(null);
     setSnapshot(null);
     setLocalDeck([]);
@@ -271,11 +283,12 @@ export function HiraganaApp() {
     showToast("Signed out");
 
     void (async () => {
+      await drainRoundSync();
       await supabase.auth.signOut();
       await clearGuestSession();
       refreshProgress();
     })();
-  }, [refreshProgress, showToast]);
+  }, [drainRoundSync, refreshProgress, showToast]);
 
   const handleFlip = useCallback(() => {
     if (!snapshot?.currentCard || isFlipped || isStartCard) return;
@@ -289,6 +302,7 @@ export function HiraganaApp() {
     }
 
     const elapsed = Math.min((Date.now() - cardShownAtRef.current) / 1000, 60);
+    const roundId = snapshot.roundId;
     const requestId = revealRequestRef.current + 1;
     revealRequestRef.current = requestId;
 
@@ -305,6 +319,7 @@ export function HiraganaApp() {
       .then(() => revealCard())
       .then((result) => {
         if (revealRequestRef.current !== requestId) return;
+        if (activeRoundIdRef.current !== roundId) return;
         setDotMap(result.dotMap);
         setSnapshot((prev) =>
           prev
@@ -319,7 +334,7 @@ export function HiraganaApp() {
       .catch(() => {
         // Local romaji is already shown; answer API will auto-reveal if needed.
       });
-  }, [isFlipped, isStartCard, showToast, snapshot?.currentCard]);
+  }, [isFlipped, isStartCard, showToast, snapshot]);
 
   const handleAnswer = useCallback(
     (correct: boolean) => {
@@ -328,8 +343,10 @@ export function HiraganaApp() {
       const kana = snapshot.currentCard.k;
       if (pendingAnswerRef.current !== null) return;
       pendingAnswerRef.current = kana;
+      setSyncPending(true);
 
       const answeredRecall = recallTime;
+      const roundId = snapshot.roundId;
 
       flashFeedback(correct);
       revealRequestRef.current += 1;
@@ -364,25 +381,35 @@ export function HiraganaApp() {
       setRomaji(null);
       setRecallTime(0);
 
+      const applyAnswerResult = (
+        result: Awaited<ReturnType<typeof submitAnswer>>,
+      ) => {
+        if (activeRoundIdRef.current !== roundId) return;
+        setSnapshot(result.snapshot);
+        setDotMap(result.dotMap);
+        setLocalDeck(result.deck);
+        if (result.confetti) launchConfetti(confettiRef.current);
+        refreshProgress();
+      };
+
       answerQueueRef.current = answerQueueRef.current
         .then(async () => {
-          const result = await submitAnswer(kana, correct, answeredRecall);
-          setSnapshot(result.snapshot);
-          setDotMap(result.dotMap);
-          setLocalDeck(result.deck);
-          serverDeckRef.current = result.deck;
-
-          if (result.confetti) launchConfetti(confettiRef.current);
-          refreshProgress();
+          try {
+            const result = await submitAnswer(kana, correct, answeredRecall);
+            applyAnswerResult(result);
+          } catch {
+            const result = await submitAnswer(kana, correct, answeredRecall);
+            applyAnswerResult(result);
+          }
         })
         .catch(() => {
-          pendingAnswerRef.current = null;
           showToast("Could not save answer — refreshing round");
           void runRound(activeGroup);
         })
         .finally(() => {
           if (pendingAnswerRef.current === kana) {
             pendingAnswerRef.current = null;
+            setSyncPending(false);
           }
         });
     },
@@ -410,11 +437,11 @@ export function HiraganaApp() {
       }
       if (event.code === "ArrowRight" || event.code === "KeyL") {
         if (isStartCard) dismissStartCard();
-        else if (isFlipped) handleAnswer(true);
+        else if (isFlipped && !syncPending) handleAnswer(true);
       }
       if (event.code === "ArrowLeft" || event.code === "KeyH") {
         if (isStartCard) dismissStartCard();
-        else if (isFlipped) handleAnswer(false);
+        else if (isFlipped && !syncPending) handleAnswer(false);
       }
     };
 
@@ -427,6 +454,7 @@ export function HiraganaApp() {
     isFlipped,
     isStartCard,
     screen,
+    syncPending,
   ]);
 
   const goScreen = (next: Screen) => {
@@ -441,6 +469,7 @@ export function HiraganaApp() {
   };
 
   const handleGroupChange = (group: string) => {
+    if (syncPending || group === activeGroup) return;
     setActiveGroup(group);
     void runRound(group);
   };
@@ -450,17 +479,14 @@ export function HiraganaApp() {
 
     try {
       // Let in-flight reveal/answer syncs finish so they don't undo the reset.
-      revealRequestRef.current += 1;
-      await answerQueueRef.current.catch(() => {});
-      answerQueueRef.current = Promise.resolve();
-      pendingAnswerRef.current = null;
+      await drainRoundSync();
+      activeRoundIdRef.current = null;
 
       const data = await resetProgress();
       setProgress(data);
       setSnapshot(null);
       setLocalDeck([]);
       setDotMap({});
-      serverDeckRef.current = [];
       showToast("Progress reset");
     } catch {
       showToast("Could not reset progress");
@@ -596,7 +622,9 @@ export function HiraganaApp() {
             {groups.map((name) => (
               <button
                 key={name}
+                type="button"
                 className={`gtab ${name === activeGroup ? "active" : ""}`}
+                disabled={syncPending}
                 onClick={() => handleGroupChange(name)}
               >
                 {name}
@@ -642,6 +670,7 @@ export function HiraganaApp() {
               romaji={romaji}
               isFlipped={isFlipped}
               isStartCard={isStartCard}
+              syncPending={syncPending}
               recallTime={recallTime}
               roundLabel={snapshot?.group ?? activeGroup}
               roundSize={snapshot?.roundSize ?? localDeck.length}

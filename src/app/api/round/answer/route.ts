@@ -7,7 +7,7 @@ import {
 import { readPlaySession, writePlaySession } from "@/lib/session";
 
 export async function POST(request: Request) {
-  const body = (await request.json()) as {
+  const body = (await request.json().catch(() => ({}))) as {
     kana?: string;
     correct?: boolean;
     recallTime?: number;
