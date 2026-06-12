@@ -331,8 +331,37 @@ export function HiraganaApp() {
 
       flashFeedback(correct);
       revealRequestRef.current += 1;
+
+      const deck =
+        localDeck[0]?.k === kana ? localDeck.slice(1) : localDeck;
+      const nextCard = deck[0] ?? null;
+      const sessionTotal = snapshot.sessionTotal + 1;
+      const sessionCorrect = snapshot.sessionCorrect + (correct ? 1 : 0);
+      const sessionStreak = correct ? snapshot.sessionStreak + 1 : 0;
+      const sessionRecallTotal =
+        snapshot.sessionTotal > 0 && snapshot.avgRecall != null
+          ? snapshot.avgRecall * snapshot.sessionTotal + answeredRecall
+          : answeredRecall;
+
+      setLocalDeck(deck);
+      setSnapshot({
+        ...snapshot,
+        currentCard: nextCard,
+        remaining: deck.length,
+        sessionTotal,
+        sessionCorrect,
+        sessionStreak,
+        avgRecall: sessionRecallTotal / sessionTotal,
+        roundComplete: deck.length === 0 && sessionTotal > 0,
+        revealed: false,
+      });
+      setDotMap((prev) => ({
+        ...prev,
+        [kana]: correct ? "mid" : "bad",
+      }));
       setIsFlipped(false);
       setRomaji(null);
+      setRecallTime(0);
 
       answerQueueRef.current = answerQueueRef.current
         .then(async () => {
@@ -359,6 +388,7 @@ export function HiraganaApp() {
       activeGroup,
       flashFeedback,
       isFlipped,
+      localDeck,
       recallTime,
       refreshProgress,
       runRound,

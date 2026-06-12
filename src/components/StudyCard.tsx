@@ -58,6 +58,21 @@ export function StudyCard({
   isStartCardRef.current = isStartCard;
 
   useEffect(() => {
+    const card = cardRef.current;
+    const overlay = overlayRef.current;
+    const lblM = lblMissRef.current;
+    const lblG = lblGotRef.current;
+    if (!card || !overlay || !lblM || !lblG) return;
+
+    card.style.transform = "";
+    card.style.transition = "";
+    card.style.opacity = "1";
+    overlay.style.opacity = "0";
+    lblM.style.opacity = "0";
+    lblG.style.opacity = "0";
+  }, [cardKey]);
+
+  useEffect(() => {
     if (isStartCard || isFlipped) {
       if (timerRafRef.current) cancelAnimationFrame(timerRafRef.current);
       if (timerFillRef.current) timerFillRef.current.style.width = "0%";
@@ -182,9 +197,12 @@ export function StudyCard({
         lblG.style.opacity = "0";
 
         window.setTimeout(() => {
-          resetCard();
-          if (isStartCardRef.current) onDismissStartRef.current();
-          else onAnswerRef.current(dir > 0);
+          if (isStartCardRef.current) {
+            resetCard();
+            onDismissStartRef.current();
+          } else {
+            onAnswerRef.current(dir > 0);
+          }
         }, SWIPE_ANIM_MS);
       } else {
         card.style.transition = "transform 0.32s cubic-bezier(0.34,1.56,0.64,1)";
