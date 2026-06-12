@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { setAuthSessionPolicy } from "@/lib/auth-session";
 import { createClient } from "@/lib/supabase/client";
 
 type AuthMode = "sign-in" | "sign-up";
@@ -17,6 +18,7 @@ export function AuthPrompt({ onDismiss, onSuccess }: AuthPromptProps) {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -50,6 +52,7 @@ export function AuthPrompt({ onDismiss, onSuccess }: AuthPromptProps) {
       return;
     }
 
+    setAuthSessionPolicy(rememberMe);
     await onSuccess();
   };
 
@@ -70,7 +73,8 @@ export function AuthPrompt({ onDismiss, onSuccess }: AuthPromptProps) {
           Save your progress
         </h2>
         <p className="auth-subtitle">
-          Create a free account to sync mastery across devices.
+          Sign in to save progress across visits. Playing without an account
+          resets every refresh.
         </p>
 
         <div className="auth-tabs">
@@ -119,6 +123,15 @@ export function AuthPrompt({ onDismiss, onSuccess }: AuthPromptProps) {
               minLength={6}
               required
             />
+          </label>
+
+          <label className="auth-remember">
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(event) => setRememberMe(event.target.checked)}
+            />
+            <span>Remember me</span>
           </label>
 
           {error ? <p className="auth-error">{error}</p> : null}

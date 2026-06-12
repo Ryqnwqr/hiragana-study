@@ -6,6 +6,7 @@ import { AuthHeaderButton } from "@/components/AuthHeaderButton";
 import { AuthPrompt } from "@/components/AuthPrompt";
 import { StudyCard } from "@/components/StudyCard";
 import {
+  clearGuestSession,
   fetchGroups,
   fetchProgress,
   resetProgress,
@@ -17,6 +18,10 @@ import {
   type PublicCard,
   type RoundSnapshot,
 } from "@/lib/client-api";
+import {
+  clearAuthSessionPolicy,
+  enforceAuthSessionPolicy,
+} from "@/lib/auth-session";
 import { AppMark } from "@/components/AppMark";
 import { createClient } from "@/lib/supabase/client";
 import { launchConfetti } from "@/lib/confetti";
@@ -98,37 +103,47 @@ export function HiraganaApp() {
   );
 
   useEffect(() => {
+    const supabase = createClient();
+    let bannerTimer: number | undefined;
+
     void (async () => {
+      const {
+        data: { user: initialUser },
+      } = await supabase.auth.getUser();
+
+      const expired = initialUser
+        ? await enforceAuthSessionPolicy(supabase)
+        : false;
+
+      const activeUser = expired ? null : initialUser;
+      setUser(activeUser);
+
+      if (!activeUser) {
+        await clearGuestSession();
+      }
+
+      setAuthChecked(true);
+
       const [{ groups: groupNames }, progressData] = await Promise.all([
         fetchGroups(),
         loadProgress(),
       ]);
       setGroups(groupNames);
       setProgress(progressData);
+
+      const standalone =
+        // @ts-expect-error legacy iOS standalone flag
+        window.navigator.standalone === true ||
+        window.matchMedia("(display-mode: standalone)").matches;
+
+      if (
+        isPhoneDevice() &&
+        !standalone &&
+        !sessionStorage.getItem("banner_dismissed")
+      ) {
+        bannerTimer = window.setTimeout(() => setShowBanner(true), 2500);
+      }
     })();
-
-    const standalone =
-      // @ts-expect-error legacy iOS standalone flag
-      window.navigator.standalone === true ||
-      window.matchMedia("(display-mode: standalone)").matches;
-
-    if (
-      isPhoneDevice() &&
-      !standalone &&
-      !sessionStorage.getItem("banner_dismissed")
-    ) {
-      const timer = window.setTimeout(() => setShowBanner(true), 2500);
-      return () => window.clearTimeout(timer);
-    }
-  }, [loadProgress]);
-
-  useEffect(() => {
-    const supabase = createClient();
-
-    void supabase.auth.getUser().then(({ data }) => {
-      setUser(data.user);
-      setAuthChecked(true);
-    });
 
     const {
       data: { subscription },
@@ -136,8 +151,19 @@ export function HiraganaApp() {
       setUser(session?.user ?? null);
     });
 
-    return () => subscription.unsubscribe();
-  }, []);
+    const handleFocus = () => {
+      void enforceAuthSessionPolicy(supabase).then((didExpire) => {
+        if (didExpire) setUser(null);
+      });
+    };
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      subscription.unsubscribe();
+      window.removeEventListener("focus", handleFocus);
+      if (bannerTimer) window.clearTimeout(bannerTimer);
+    };
+  }, [loadProgress]);
 
   useEffect(() => {
     if (!snapshot?.currentCard || isStartCard || isFlipped) return;
@@ -208,9 +234,16 @@ export function HiraganaApp() {
 
   const handleSignOut = useCallback(async () => {
     const supabase = createClient();
+    clearAuthSessionPolicy();
     await supabase.auth.signOut();
     setUser(null);
+    await clearGuestSession();
     await loadProgress();
+    setSnapshot(null);
+    setLocalDeck([]);
+    setDotMap({});
+    setScreen("welcome");
+    setShowNav(false);
     showToast("Signed out");
   }, [loadProgress, showToast]);
 

@@ -44,12 +44,25 @@ export async function readCookieSession(): Promise<AppSession> {
   }
 }
 
-export async function writeCookieSession(session: AppSession): Promise<void> {
+const GUEST_COOKIE_MAX_AGE = 60 * 60 * 24;
+const SIGNED_IN_COOKIE_MAX_AGE = 60 * 60 * 24 * 180;
+
+export async function clearCookieSession(): Promise<void> {
   const cookieStore = await cookies();
+  cookieStore.delete(COOKIE_NAME);
+}
+
+export async function writeCookieSession(
+  session: AppSession,
+  options?: { guest?: boolean },
+): Promise<void> {
+  const cookieStore = await cookies();
+  const guest = options?.guest ?? false;
+  const maxAge = guest ? GUEST_COOKIE_MAX_AGE : SIGNED_IN_COOKIE_MAX_AGE;
   const token = await new SignJWT(compressSession(session))
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("180d")
+    .setExpirationTime(`${maxAge}s`)
     .sign(getSecret());
 
   cookieStore.set(COOKIE_NAME, token, {
@@ -57,7 +70,7 @@ export async function writeCookieSession(session: AppSession): Promise<void> {
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 60 * 24 * 180,
+    maxAge,
   });
 }
 
@@ -77,11 +90,15 @@ export async function readSession(): Promise<AppSession> {
 }
 
 export async function writeSession(session: AppSession): Promise<void> {
-  await writeCookieSession(session);
-
   const userId = await getAuthUserId();
-  if (!userId) return;
 
+  if (!userId) {
+    // Guest round state only lasts for this visit; cleared on the next page load.
+    await writeCookieSession(session, { guest: true });
+    return;
+  }
+
+  await writeCookieSession(session);
   const supabase = await createClient();
   await saveCloudProgress(supabase, userId, session.progress);
 }
