@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StudyCard } from "@/components/StudyCard";
 import {
   fetchGroups,
@@ -18,6 +18,11 @@ import { AppMark } from "@/components/AppMark";
 import { launchConfetti } from "@/lib/confetti";
 import { fmtSpeed, roundMessage } from "@/lib/format";
 import { lookupRomaji } from "@/lib/romaji-lookup";
+import {
+  MASTERY_SORT_OPTIONS,
+  sortMasteryCells,
+  type MasterySort,
+} from "@/lib/mastery-sort";
 
 type Screen = "welcome" | "study" | "stats";
 type DotMap = Record<string, "unseen" | "seen" | "good" | "mid" | "bad">;
@@ -39,6 +44,12 @@ export function HiraganaApp() {
   const [toast, setToast] = useState("");
   const [flash, setFlash] = useState<"" | "good" | "bad">("");
   const [showBanner, setShowBanner] = useState(false);
+  const [masterySort, setMasterySort] = useState<MasterySort>("deck");
+
+  const sortedMastery = useMemo(
+    () => sortMasteryCells(progress?.mastery ?? [], masterySort),
+    [masterySort, progress?.mastery],
+  );
 
   const cardShownAtRef = useRef(0);
   const confettiRef = useRef<HTMLCanvasElement>(null);
@@ -561,7 +572,23 @@ export function HiraganaApp() {
             <div className="sl">Avg recall</div>
           </div>
         </div>
-        <div className="section-label">Character mastery &amp; speed</div>
+        <div className="section-header">
+          <div className="section-label">Character mastery &amp; speed</div>
+          <select
+            className="mastery-sort"
+            value={masterySort}
+            onChange={(event) =>
+              setMasterySort(event.target.value as MasterySort)
+            }
+            aria-label="Sort characters"
+          >
+            {MASTERY_SORT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="speed-legend">
           <div className="sl-item">
             <div className="sl-dot" style={{ background: "var(--green)" }} />
@@ -577,7 +604,7 @@ export function HiraganaApp() {
           </div>
         </div>
         <div className="mastery-grid">
-          {progress?.mastery.map((cell) => {
+          {sortedMastery.map((cell) => {
             const timeClass =
               cell.avgTime == null
                 ? "t-none"

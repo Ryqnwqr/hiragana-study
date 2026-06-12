@@ -751,14 +751,58 @@ body {
   margin-top: 3px;
 }
 
-.section-label {
+.section-header {
   width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: -6px;
+}
+
+.section-label {
   font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--sub);
   font-weight: 500;
-  margin-bottom: -6px;
+  min-width: 0;
+}
+
+.mastery-sort {
+  flex-shrink: 0;
+  max-width: 46%;
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--sub);
+  font-family: "Inter", sans-serif;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  padding: 6px 26px 6px 10px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236b7191' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.mastery-sort:focus {
+  outline: none;
+  border-color: rgba(224, 107, 139, 0.35);
+  color: var(--text);
+}
+
+.mastery-sort option {
+  background: var(--panel);
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .mastery-grid {
