@@ -9,7 +9,7 @@ import {
 
 const KANA_TO_INDEX = new Map(ALL_CARDS.map((card, index) => [card.k, index]));
 
-type CompactProgress = {
+export type CompactProgress = {
   s: number[];
   t: (number | null)[];
   ta: number;

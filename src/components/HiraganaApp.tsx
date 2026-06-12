@@ -1,6 +1,8 @@
 "use client";
 
+import type { User } from "@supabase/supabase-js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AuthPrompt } from "@/components/AuthPrompt";
 import { StudyCard } from "@/components/StudyCard";
 import {
   fetchGroups,
@@ -10,11 +12,13 @@ import {
   shuffleRound,
   startRound,
   submitAnswer,
+  syncAuthProgress,
   type ProgressResponse,
   type PublicCard,
   type RoundSnapshot,
 } from "@/lib/client-api";
 import { AppMark } from "@/components/AppMark";
+import { createClient } from "@/lib/supabase/client";
 import { launchConfetti } from "@/lib/confetti";
 import { fmtSpeed, roundMessage } from "@/lib/format";
 import { lookupRomaji } from "@/lib/romaji-lookup";
@@ -46,6 +50,9 @@ export function HiraganaApp() {
   const [flash, setFlash] = useState<"" | "good" | "bad">("");
   const [showBanner, setShowBanner] = useState(false);
   const [masterySort, setMasterySort] = useState<MasterySort>("deck");
+  const [user, setUser] = useState<User | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [showAuthPrompt, setShowAuthPrompt] = useState(false);
 
   const sortedMastery = useMemo(
     () => sortMasteryCells(progress?.mastery ?? [], masterySort),
@@ -59,6 +66,7 @@ export function HiraganaApp() {
   const pendingAnswerRef = useRef<string | null>(null);
   const serverDeckRef = useRef<PublicCard[]>([]);
   const revealRequestRef = useRef(0);
+  const authPromptDismissedRef = useRef(false);
 
   const loadProgress = useCallback(async () => {
     const data = await fetchProgress();
@@ -114,6 +122,23 @@ export function HiraganaApp() {
   }, [loadProgress]);
 
   useEffect(() => {
+    const supabase = createClient();
+
+    void supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user);
+      setAuthChecked(true);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
     if (!snapshot?.currentCard || isStartCard || isFlipped) return;
     cardShownAtRef.current = Date.now();
   }, [snapshot?.currentCard?.k, isStartCard, isFlipped, snapshot]);
@@ -142,9 +167,41 @@ export function HiraganaApp() {
     [applyRoundData],
   );
 
-  const dismissStartCard = useCallback(() => {
+  const dismissAuthPrompt = useCallback(() => {
+    authPromptDismissedRef.current = true;
+    setShowAuthPrompt(false);
     setIsStartCard(false);
   }, []);
+
+  const handleAuthSuccess = useCallback(async () => {
+    setShowAuthPrompt(false);
+    try {
+      await syncAuthProgress();
+      await loadProgress();
+      showToast("Progress synced");
+    } catch {
+      showToast("Signed in, but sync failed");
+    }
+    setIsStartCard(false);
+  }, [loadProgress, showToast]);
+
+  const dismissStartCard = useCallback(() => {
+    if (!authChecked) return;
+
+    if (user || authPromptDismissedRef.current) {
+      setIsStartCard(false);
+      return;
+    }
+    setShowAuthPrompt(true);
+  }, [authChecked, user]);
+
+  const handleSignOut = useCallback(async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    setUser(null);
+    await loadProgress();
+    showToast("Signed out");
+  }, [loadProgress, showToast]);
 
   const handleFlip = useCallback(() => {
     if (!snapshot?.currentCard || isFlipped || isStartCard) return;
@@ -329,6 +386,10 @@ export function HiraganaApp() {
       <div id="flash" className={flash ? `f-${flash}` : ""} />
       <div className={`toast ${toast ? "show" : ""}`}>{toast}</div>
       <canvas id="confetti" ref={confettiRef} />
+
+      {showAuthPrompt && (
+        <AuthPrompt onDismiss={dismissAuthPrompt} onSuccess={handleAuthSuccess} />
+      )}
 
       {showBanner && (
         <div className="install-banner">
@@ -550,6 +611,11 @@ export function HiraganaApp() {
       <div className={`screen stats-screen ${screen === "stats" ? "active" : ""}`}>
         <div className="stats-screen-header">
           <h2>Your progress</h2>
+          {user ? (
+            <button type="button" className="account-chip" onClick={() => void handleSignOut()}>
+              {user.email?.split("@")[0] ?? "Account"} · Sign out
+            </button>
+          ) : null}
         </div>
         <div className="summary-grid">
           <div className="sum-card">

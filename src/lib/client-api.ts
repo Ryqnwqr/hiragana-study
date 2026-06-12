@@ -68,6 +68,10 @@ export function fetchProgress() {
   return request<ProgressResponse>("/api/progress");
 }
 
+export function syncAuthProgress() {
+  return request<{ ok: boolean }>("/api/auth/sync", { method: "POST" });
+}
+
 export function resetProgress() {
   return request<{ ok: boolean }>("/api/progress", { method: "DELETE" });
 }
