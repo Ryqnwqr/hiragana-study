@@ -23,6 +23,9 @@
   --sab: env(safe-area-inset-bottom, 0px);
   --sal: env(safe-area-inset-left, 0px);
   --sar: env(safe-area-inset-right, 0px);
+  /* Never trust the JS-snapshotted --sab alone — fall back to whichever of it
+     or the live inset is larger so bottom-anchored UI always reaches the edge. */
+  --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--sab, 0px));
 }
 
 html {
@@ -41,7 +44,7 @@ body {
 
 .install-banner {
   position: fixed;
-  bottom: calc(70px + var(--sab));
+  bottom: calc(70px + var(--safe-bottom));
   left: 50%;
   transform: translateX(-50%);
   background: var(--panel);
@@ -81,7 +84,7 @@ body {
   top: var(--sat);
   left: var(--sal);
   right: var(--sar);
-  bottom: calc(60px + var(--sab));
+  bottom: calc(60px + var(--safe-bottom));
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1167,7 +1170,7 @@ body {
   left: 0;
   right: 0;
   height: 60px;
-  padding-bottom: var(--sab);
+  padding-bottom: var(--safe-bottom);
   box-sizing: content-box;
   background: var(--panel);
   border-top: 1px solid var(--border);
@@ -1424,7 +1427,7 @@ body {
 
 .toast {
   position: fixed;
-  bottom: calc(72px + var(--sab));
+  bottom: calc(72px + var(--safe-bottom));
   left: 50%;
   transform: translateX(-50%) translateY(10px);
   background: var(--panel);

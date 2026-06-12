@@ -45,7 +45,10 @@ type DotMap = Record<string, "unseen" | "seen" | "good" | "mid" | "bad">;
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
-    credentials: "same-origin",
+    // "include" (not "same-origin") so cookies are sent inside an iOS
+    // standalone/home-screen WebView, which otherwise drops them and breaks
+    // session reads and cloud sync. All requests here are same-origin.
+    credentials: "include",
     cache: "no-store",
     ...init,
     headers: {
