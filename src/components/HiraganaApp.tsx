@@ -18,6 +18,7 @@ import { AppMark } from "@/components/AppMark";
 import { launchConfetti } from "@/lib/confetti";
 import { fmtSpeed, roundMessage } from "@/lib/format";
 import { lookupRomaji } from "@/lib/romaji-lookup";
+import { isPhoneDevice } from "@/lib/device";
 import {
   MASTERY_SORT_OPTIONS,
   sortMasteryCells,
@@ -102,7 +103,11 @@ export function HiraganaApp() {
       window.navigator.standalone === true ||
       window.matchMedia("(display-mode: standalone)").matches;
 
-    if (!standalone && !sessionStorage.getItem("banner_dismissed")) {
+    if (
+      isPhoneDevice() &&
+      !standalone &&
+      !sessionStorage.getItem("banner_dismissed")
+    ) {
       const timer = window.setTimeout(() => setShowBanner(true), 2500);
       return () => window.clearTimeout(timer);
     }
