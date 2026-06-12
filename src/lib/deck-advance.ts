@@ -14,10 +14,15 @@ export function advancePublicDeck(
   kana: string,
   correct: boolean,
 ): DeckCard[] {
-  if (deck[0]?.k !== kana) return deck;
+  let head = deck;
+  if (deck[0]?.k !== kana) {
+    const index = deck.findIndex((card) => card.k === kana);
+    if (index < 0) return deck;
+    head = deck.slice(index);
+  }
 
-  const answered = deck[0];
-  const next = deck.slice(1);
+  const answered = head[0];
+  const next = head.slice(1);
 
   if (!correct) {
     const insertAt = getReinsertIndex(next.length, kana);

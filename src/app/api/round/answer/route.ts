@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     recallTime?: number;
   };
 
-  if (!body.kana || typeof body.correct !== "boolean") {
+  if (typeof body.correct !== "boolean") {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
   try {
     const { session: nextSession, reinserted, confetti } = submitAnswer(
       session,
-      body.kana,
+      body.kana ?? "",
       body.correct,
       recallTime,
     );

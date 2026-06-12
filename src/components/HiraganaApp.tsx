@@ -71,6 +71,7 @@ export function HiraganaApp() {
   const answerQueueRef = useRef(Promise.resolve());
   const pendingAnswerRef = useRef<string | null>(null);
   const activeRoundIdRef = useRef<string | null>(null);
+  const localDeckRef = useRef<PublicCard[]>([]);
   const revealRequestRef = useRef(0);
   const authPromptDismissedRef = useRef(false);
   const authFromStartCardRef = useRef(false);
@@ -105,6 +106,7 @@ export function HiraganaApp() {
       pendingAnswerRef.current = null;
       setSyncPending(false);
       activeRoundIdRef.current = nextSnapshot.roundId;
+      localDeckRef.current = deck;
       answerQueueRef.current = Promise.resolve();
       revealRequestRef.current += 1;
     },
@@ -212,6 +214,8 @@ export function HiraganaApp() {
         applyRoundData(data, data.dotMap, data.deck, true);
       } catch {
         showToast("Could not start round");
+        pendingAnswerRef.current = null;
+        setSyncPending(false);
       } finally {
         roundBusyRef.current = false;
       }
@@ -351,7 +355,8 @@ export function HiraganaApp() {
       flashFeedback(correct);
       revealRequestRef.current += 1;
 
-      const deck = advancePublicDeck(localDeck, kana, correct);
+      const deck = advancePublicDeck(localDeckRef.current, kana, correct);
+      localDeckRef.current = deck;
       const nextCard = deck[0] ?? null;
       const sessionTotal = snapshot.sessionTotal + 1;
       const sessionCorrect = snapshot.sessionCorrect + (correct ? 1 : 0);
@@ -384,40 +389,45 @@ export function HiraganaApp() {
       const applyAnswerResult = (
         result: Awaited<ReturnType<typeof submitAnswer>>,
       ) => {
-        if (activeRoundIdRef.current !== roundId) return;
+        if (activeRoundIdRef.current !== roundId) {
+          pendingAnswerRef.current = null;
+          setSyncPending(false);
+          return;
+        }
         setSnapshot(result.snapshot);
         setDotMap(result.dotMap);
         setLocalDeck(result.deck);
+        localDeckRef.current = result.deck;
         if (result.confetti) launchConfetti(confettiRef.current);
         refreshProgress();
+        pendingAnswerRef.current = null;
+        setSyncPending(false);
+      };
+
+      const saveAnswer = async () => {
+        await revealCard().catch(() => {});
+        try {
+          return await submitAnswer(kana, correct, answeredRecall);
+        } catch {
+          await revealCard().catch(() => {});
+          return await submitAnswer(kana, correct, answeredRecall);
+        }
       };
 
       answerQueueRef.current = answerQueueRef.current
         .then(async () => {
-          try {
-            const result = await submitAnswer(kana, correct, answeredRecall);
-            applyAnswerResult(result);
-          } catch {
-            const result = await submitAnswer(kana, correct, answeredRecall);
-            applyAnswerResult(result);
-          }
+          const result = await saveAnswer();
+          applyAnswerResult(result);
         })
-        .catch(() => {
+        .catch(async () => {
           showToast("Could not save answer — refreshing round");
-          void runRound(activeGroup);
-        })
-        .finally(() => {
-          if (pendingAnswerRef.current === kana) {
-            pendingAnswerRef.current = null;
-            setSyncPending(false);
-          }
+          await runRound(activeGroup);
         });
     },
     [
       activeGroup,
       flashFeedback,
       isFlipped,
-      localDeck,
       recallTime,
       refreshProgress,
       runRound,

@@ -157,9 +157,8 @@ export function submitAnswer(
     throw new Error("No active card");
   }
 
-  if (round.deck[0] !== kana) {
-    throw new Error("Card mismatch");
-  }
+  // Server deck order is authoritative — client kana is only a hint.
+  const actualKana = round.deck[0];
 
   if (!round.revealed) {
     workingSession = revealCurrentCard(workingSession).session;
@@ -169,7 +168,7 @@ export function submitAnswer(
 
   const result = applyAnswer(
     workingSession.progress,
-    kana,
+    actualKana,
     correct,
     recallTime,
     activeRound.sessionStreak,
@@ -180,12 +179,12 @@ export function submitAnswer(
   deck.shift();
 
   if (result.reinserted) {
-    const insertAt = getReinsertIndex(deck.length, kana);
-    deck.splice(insertAt, 0, kana);
+    const insertAt = getReinsertIndex(deck.length, actualKana);
+    deck.splice(insertAt, 0, actualKana);
   }
 
   const dotMap = { ...activeRound.dotMap };
-  dotMap[kana] = result.dotStatus;
+  dotMap[actualKana] = result.dotStatus;
 
   const confetti =
     correct && result.sessionStreak > 0 && result.sessionStreak % 5 === 0;
