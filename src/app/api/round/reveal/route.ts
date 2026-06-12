@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { getRomaji } from "@/lib/hiragana";
 import { buildRoundSnapshot, revealCurrentCard } from "@/lib/round-service";
-import { readSession, writeSession } from "@/lib/session";
+import { readPlaySession, writePlaySession } from "@/lib/session";
 
 export async function POST() {
-  const session = await readSession();
+  const session = await readPlaySession();
   const round = session.round;
 
   if (!round?.deck.length) {
@@ -28,7 +28,7 @@ export async function POST() {
     }
 
     const { session: nextSession, romaji } = revealCurrentCard(session);
-    await writeSession(nextSession);
+    await writePlaySession(nextSession);
 
     return NextResponse.json({
       romaji,

@@ -4,7 +4,7 @@ import {
   deckToPublicCards,
   submitAnswer,
 } from "@/lib/round-service";
-import { readSession, writeSession } from "@/lib/session";
+import { readPlaySession, writePlaySession } from "@/lib/session";
 
 export async function POST(request: Request) {
   const body = (await request.json()) as {
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
       ? body.recallTime
       : 0;
 
-  const session = await readSession();
+  const session = await readPlaySession();
 
   try {
     const { session: nextSession, reinserted, confetti } = submitAnswer(
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
       body.correct,
       recallTime,
     );
-    await writeSession(nextSession);
+    await writePlaySession(nextSession);
 
     const snapshot = buildRoundSnapshot(nextSession, false);
 

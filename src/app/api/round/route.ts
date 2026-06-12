@@ -4,15 +4,15 @@ import {
   deckToPublicCards,
   startRound,
 } from "@/lib/round-service";
-import { readSession, writeSession } from "@/lib/session";
+import { readPlaySession, writePlaySession } from "@/lib/session";
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as { group?: string };
   const group = body.group || "All";
 
-  const session = await readSession();
+  const session = await readPlaySession();
   const nextSession = startRound(session, group);
-  await writeSession(nextSession);
+  await writePlaySession(nextSession);
 
   const round = nextSession.round!;
 

@@ -50,7 +50,6 @@ export function HiraganaApp() {
   const [isFlipped, setIsFlipped] = useState(false);
   const [isStartCard, setIsStartCard] = useState(false);
   const [recallTime, setRecallTime] = useState(0);
-  const [roundLoading, setRoundLoading] = useState(false);
   const [toast, setToast] = useState("");
   const [flash, setFlash] = useState<"" | "good" | "bad">("");
   const [showBanner, setShowBanner] = useState(false);
@@ -73,12 +72,19 @@ export function HiraganaApp() {
   const revealRequestRef = useRef(0);
   const authPromptDismissedRef = useRef(false);
   const authFromStartCardRef = useRef(false);
+  const roundBusyRef = useRef(false);
 
   const loadProgress = useCallback(async () => {
     const data = await fetchProgress();
     setProgress(data);
     return data;
   }, []);
+
+  const refreshProgress = useCallback(() => {
+    void loadProgress().catch(() => {
+      // Stats can refresh again later without blocking play.
+    });
+  }, [loadProgress]);
 
   const applyRoundData = useCallback(
     (
@@ -117,21 +123,22 @@ export function HiraganaApp() {
 
       const activeUser = expired ? null : initialUser;
       setUser(activeUser);
-
-      if (!activeUser) {
-        await clearGuestSession();
-      }
-
       setAuthChecked(true);
 
-      const { groups: groupNames } = await fetchGroups();
-      setGroups(groupNames);
+      void fetchGroups()
+        .then(({ groups: groupNames }) => setGroups(groupNames))
+        .catch(() => setGroups([]));
 
-      try {
-        const progressData = await loadProgress();
-        setProgress(progressData);
-      } catch {
-        setProgress(null);
+      const refreshAfterGuestClear = () => {
+        void loadProgress()
+          .then((progressData) => setProgress(progressData))
+          .catch(() => setProgress(null));
+      };
+
+      if (!activeUser) {
+        void clearGuestSession().then(refreshAfterGuestClear);
+      } else {
+        refreshAfterGuestClear();
       }
 
       const standalone =
@@ -186,14 +193,15 @@ export function HiraganaApp() {
 
   const runRound = useCallback(
     async (group: string) => {
-      setRoundLoading(true);
+      if (roundBusyRef.current) return;
+      roundBusyRef.current = true;
       try {
         const data = await startRound(group);
         applyRoundData(data, data.dotMap, data.deck, true);
       } catch {
         showToast("Could not start round");
       } finally {
-        setRoundLoading(false);
+        roundBusyRef.current = false;
       }
     },
     [applyRoundData, showToast],
@@ -217,6 +225,7 @@ export function HiraganaApp() {
     const fromStartCard = authFromStartCardRef.current;
     authFromStartCardRef.current = false;
     setShowAuthPrompt(false);
+    if (fromStartCard) setIsStartCard(false);
 
     const supabase = createClient();
     const {
@@ -225,23 +234,18 @@ export function HiraganaApp() {
 
     if (!session) {
       showToast("Signed in, but sync failed");
-      if (fromStartCard) setIsStartCard(false);
       return;
     }
 
     setUser(session.user);
 
-    try {
-      await syncAuthProgress({
-        access_token: session.access_token,
-        refresh_token: session.refresh_token,
-      });
-      await loadProgress();
-      showToast("Progress synced");
-    } catch {
-      showToast("Signed in, but sync failed");
-    }
-    if (fromStartCard) setIsStartCard(false);
+    void syncAuthProgress({
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+    })
+      .then(() => loadProgress())
+      .then(() => showToast("Progress synced"))
+      .catch(() => showToast("Signed in, but sync failed"));
   }, [loadProgress, showToast]);
 
   const dismissStartCard = useCallback(() => {
@@ -254,20 +258,23 @@ export function HiraganaApp() {
     openAuthPrompt(true);
   }, [authChecked, openAuthPrompt, user]);
 
-  const handleSignOut = useCallback(async () => {
+  const handleSignOut = useCallback(() => {
     const supabase = createClient();
     clearAuthSessionPolicy();
-    await supabase.auth.signOut();
     setUser(null);
-    await clearGuestSession();
-    await loadProgress();
     setSnapshot(null);
     setLocalDeck([]);
     setDotMap({});
     setScreen("welcome");
     setShowNav(false);
     showToast("Signed out");
-  }, [loadProgress, showToast]);
+
+    void (async () => {
+      await supabase.auth.signOut();
+      await clearGuestSession();
+      refreshProgress();
+    })();
+  }, [refreshProgress, showToast]);
 
   const handleFlip = useCallback(() => {
     if (!snapshot?.currentCard || isFlipped || isStartCard) return;
@@ -336,7 +343,7 @@ export function HiraganaApp() {
           serverDeckRef.current = result.deck;
 
           if (result.confetti) launchConfetti(confettiRef.current);
-          void loadProgress();
+          refreshProgress();
         })
         .catch(() => {
           showToast("Could not save answer — refreshing round");
@@ -352,8 +359,8 @@ export function HiraganaApp() {
       activeGroup,
       flashFeedback,
       isFlipped,
-      loadProgress,
       recallTime,
+      refreshProgress,
       runRound,
       showToast,
       snapshot,
@@ -362,7 +369,7 @@ export function HiraganaApp() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (screen !== "study" || roundLoading) return;
+      if (screen !== "study") return;
 
       if (event.code === "Space" || event.code === "Enter") {
         event.preventDefault();
@@ -387,32 +394,29 @@ export function HiraganaApp() {
     handleFlip,
     isFlipped,
     isStartCard,
-    roundLoading,
     screen,
   ]);
 
-  const goScreen = async (next: Screen) => {
+  const goScreen = (next: Screen) => {
     setScreen(next);
-    if (next === "stats") {
-      await loadProgress();
-    }
+    if (next === "stats") refreshProgress();
   };
 
-  const handleStartStudy = async () => {
+  const handleStartStudy = () => {
     setShowNav(true);
     setScreen("study");
-    await runRound(activeGroup);
+    void runRound(activeGroup);
   };
 
-  const handleGroupChange = async (group: string) => {
+  const handleGroupChange = (group: string) => {
     setActiveGroup(group);
-    await runRound(group);
+    void runRound(group);
   };
 
   const handleReset = async () => {
     if (!confirm("Reset all progress? This cannot be undone.")) return;
     await resetProgress();
-    await loadProgress();
+    refreshProgress();
     setSnapshot(null);
     setLocalDeck([]);
     setDotMap({});
@@ -538,7 +542,7 @@ export function HiraganaApp() {
       <div className={`screen study-screen ${screen === "study" ? "active" : ""}`}>
         <div className="study-header">
           <div className="logo">
-            <AppMark size={24} />
+            <AppMark size={32} />
             <span>ひらがな</span>
           </div>
         </div>
@@ -549,8 +553,7 @@ export function HiraganaApp() {
               <button
                 key={name}
                 className={`gtab ${name === activeGroup ? "active" : ""}`}
-                onClick={() => void handleGroupChange(name)}
-                disabled={roundLoading}
+                onClick={() => handleGroupChange(name)}
               >
                 {name}
               </button>

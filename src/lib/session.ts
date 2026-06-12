@@ -5,7 +5,11 @@ import {
   expandLegacyOrCompact,
 } from "@/lib/compact-session";
 import { fetchCloudProgress, saveCloudProgress } from "@/lib/cloud-progress";
-import { createDefaultSession, type AppSession } from "@/lib/progress";
+import {
+  createDefaultSession,
+  type AppSession,
+  type ProgressState,
+} from "@/lib/progress";
 import { createClient } from "@/lib/supabase/server";
 
 const COOKIE_NAME = "hira_session";
@@ -74,9 +78,56 @@ export async function writeCookieSession(
   });
 }
 
-export async function readSession(): Promise<AppSession> {
-  const cookieSession = await readCookieSession();
+async function persistCloudProgress(
+  userId: string,
+  progress: ProgressState,
+): Promise<void> {
+  const supabase = await createClient();
+  await saveCloudProgress(supabase, userId, progress);
+}
+
+function scheduleCloudPersist(userId: string, progress: ProgressState) {
+  void persistCloudProgress(userId, progress).catch(() => {
+    // Cookie already has the latest state; cloud sync can retry on the next write.
+  });
+}
+
+/** Fast path for gameplay — cookie only, no cloud round-trip. */
+export async function readPlaySession(): Promise<AppSession> {
+  return readCookieSession();
+}
+
+/**
+ * Fast path for gameplay — writes cookie immediately, cloud sync in background.
+ */
+export async function writePlaySession(
+  session: AppSession,
+  options?: { awaitCloud?: boolean },
+): Promise<void> {
   const userId = await getAuthUserId();
+
+  if (!userId) {
+    await writeCookieSession(session, { guest: true });
+    return;
+  }
+
+  await writeCookieSession(session);
+
+  if (options?.awaitCloud) {
+    await persistCloudProgress(userId, session.progress);
+    return;
+  }
+
+  scheduleCloudPersist(userId, session.progress);
+}
+
+/** Full read — merges cloud progress when signed in (for sync / initial load). */
+export async function readSession(): Promise<AppSession> {
+  const [cookieSession, userId] = await Promise.all([
+    readCookieSession(),
+    getAuthUserId(),
+  ]);
+
   if (!userId) return cookieSession;
 
   try {
@@ -96,20 +147,5 @@ export async function readSession(): Promise<AppSession> {
 }
 
 export async function writeSession(session: AppSession): Promise<void> {
-  const userId = await getAuthUserId();
-
-  if (!userId) {
-    // Guest round state only lasts for this visit; cleared on the next page load.
-    await writeCookieSession(session, { guest: true });
-    return;
-  }
-
-  await writeCookieSession(session);
-
-  try {
-    const supabase = await createClient();
-    await saveCloudProgress(supabase, userId, session.progress);
-  } catch {
-    // Keep the round cookie even if cloud sync fails temporarily.
-  }
+  await writePlaySession(session, { awaitCloud: true });
 }

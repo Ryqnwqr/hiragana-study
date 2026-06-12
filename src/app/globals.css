@@ -235,10 +235,9 @@ body {
 
 .study-header {
   width: 100%;
-  padding: 16px max(20px, calc(16px + var(--sar))) 0
-    max(20px, calc(120px + var(--sal)));
+  padding: 18px max(20px, var(--sar)) 4px max(20px, var(--sal));
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
   flex-shrink: 0;
 }
@@ -246,11 +245,12 @@ body {
 .study-header .logo {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 20px;
+  justify-content: center;
+  gap: 10px;
+  font-size: 26px;
   font-weight: 300;
   color: var(--sakura);
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
 }
 
 .app-auth-bar {

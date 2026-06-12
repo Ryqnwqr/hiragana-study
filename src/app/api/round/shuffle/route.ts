@@ -4,16 +4,16 @@ import {
   deckToPublicCards,
   shuffleActiveRound,
 } from "@/lib/round-service";
-import { readSession, writeSession } from "@/lib/session";
+import { readPlaySession, writePlaySession } from "@/lib/session";
 
 export async function POST() {
-  const session = await readSession();
+  const session = await readPlaySession();
   if (!session.round) {
     return NextResponse.json({ error: "No active round" }, { status: 400 });
   }
 
   const nextSession = shuffleActiveRound(session);
-  await writeSession(nextSession);
+  await writePlaySession(nextSession);
 
   const round = nextSession.round!;
 

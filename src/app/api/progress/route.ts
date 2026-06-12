@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { createDefaultProgress } from "@/lib/progress";
 import { countMastered, getMasterySummary } from "@/lib/srs";
-import { readSession, writeSession } from "@/lib/session";
+import { readPlaySession, writePlaySession } from "@/lib/session";
 
 export async function GET() {
-  const session = await readSession();
+  const session = await readPlaySession();
   const { progress } = session;
   const total = progress.totalAnswers;
 
@@ -26,11 +26,14 @@ export async function GET() {
 }
 
 export async function DELETE() {
-  const session = await readSession();
-  await writeSession({
-    progress: createDefaultProgress(),
-    round: null,
-  });
+  const session = await readPlaySession();
+  await writePlaySession(
+    {
+      progress: createDefaultProgress(),
+      round: null,
+    },
+    { awaitCloud: true },
+  );
 
   return NextResponse.json({ ok: true, hadRound: Boolean(session.round) });
 }
