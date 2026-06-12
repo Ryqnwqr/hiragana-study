@@ -212,8 +212,25 @@ export function HiraganaApp() {
     const fromStartCard = authFromStartCardRef.current;
     authFromStartCardRef.current = false;
     setShowAuthPrompt(false);
+
+    const supabase = createClient();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      showToast("Signed in, but sync failed");
+      if (fromStartCard) setIsStartCard(false);
+      return;
+    }
+
+    setUser(session.user);
+
     try {
-      await syncAuthProgress();
+      await syncAuthProgress({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token,
+      });
       await loadProgress();
       showToast("Progress synced");
     } catch {

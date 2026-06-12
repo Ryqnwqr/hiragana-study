@@ -17,7 +17,8 @@ export async function fetchCloudProgress(
     .eq("user_id", userId)
     .maybeSingle();
 
-  if (error || !data?.payload) return null;
+  if (error) throw error;
+  if (!data?.payload) return null;
 
   return expandProgress(data.payload as CompactProgress);
 }
@@ -27,11 +28,14 @@ export async function saveCloudProgress(
   userId: string,
   progress: ProgressState,
 ): Promise<void> {
-  const { error } = await supabase.from("user_progress").upsert({
-    user_id: userId,
-    payload: compressProgress(progress),
-    updated_at: new Date().toISOString(),
-  });
+  const { error } = await supabase.from("user_progress").upsert(
+    {
+      user_id: userId,
+      payload: compressProgress(progress),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id" },
+  );
 
   if (error) throw error;
 }

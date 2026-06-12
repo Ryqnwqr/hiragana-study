@@ -68,8 +68,14 @@ export function fetchProgress() {
   return request<ProgressResponse>("/api/progress");
 }
 
-export function syncAuthProgress() {
-  return request<{ ok: boolean }>("/api/auth/sync", { method: "POST" });
+export function syncAuthProgress(tokens: {
+  access_token: string;
+  refresh_token: string;
+}) {
+  return request<{ ok: boolean }>("/api/auth/sync", {
+    method: "POST",
+    body: JSON.stringify(tokens),
+  });
 }
 
 export function clearGuestSession() {
