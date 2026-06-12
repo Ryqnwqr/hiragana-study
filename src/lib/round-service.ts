@@ -5,6 +5,7 @@ import {
   getRomaji,
   type HiraganaCard,
 } from "@/lib/hiragana";
+import { getReinsertIndex } from "@/lib/deck-advance";
 import type { ActiveRound, AppSession } from "@/lib/progress";
 import { applyAnswer, buildDeck, shuffleDeck } from "@/lib/srs";
 
@@ -179,10 +180,7 @@ export function submitAnswer(
   deck.shift();
 
   if (result.reinserted) {
-    const insertAt = Math.min(
-      deck.length,
-      2 + Math.floor(Math.random() * 3),
-    );
+    const insertAt = getReinsertIndex(deck.length, kana);
     deck.splice(insertAt, 0, kana);
   }
 

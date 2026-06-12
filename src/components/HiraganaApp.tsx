@@ -28,6 +28,7 @@ import { launchConfetti } from "@/lib/confetti";
 import { fmtSpeed, roundMessage } from "@/lib/format";
 import { lookupRomaji } from "@/lib/romaji-lookup";
 import { isPhoneDevice } from "@/lib/device";
+import { advancePublicDeck } from "@/lib/deck-advance";
 import {
   MASTERY_SORT_OPTIONS,
   sortMasteryCells,
@@ -278,6 +279,7 @@ export function HiraganaApp() {
 
   const handleFlip = useCallback(() => {
     if (!snapshot?.currentCard || isFlipped || isStartCard) return;
+    if (pendingAnswerRef.current !== null) return;
 
     const kana = snapshot.currentCard.k;
     const localRomaji = lookupRomaji(kana);
@@ -298,8 +300,8 @@ export function HiraganaApp() {
       [kana]: prev[kana] === "unseen" ? "seen" : prev[kana],
     }));
 
-    // Sync reveal state to the server without blocking the UI.
-    void answerQueueRef.current
+    // Serialize reveal with answers so session writes never race on the server.
+    answerQueueRef.current = answerQueueRef.current
       .then(() => revealCard())
       .then((result) => {
         if (revealRequestRef.current !== requestId) return;
@@ -324,7 +326,7 @@ export function HiraganaApp() {
       if (!snapshot?.currentCard || !isFlipped) return;
 
       const kana = snapshot.currentCard.k;
-      if (pendingAnswerRef.current === kana) return;
+      if (pendingAnswerRef.current !== null) return;
       pendingAnswerRef.current = kana;
 
       const answeredRecall = recallTime;
@@ -332,8 +334,7 @@ export function HiraganaApp() {
       flashFeedback(correct);
       revealRequestRef.current += 1;
 
-      const deck =
-        localDeck[0]?.k === kana ? localDeck.slice(1) : localDeck;
+      const deck = advancePublicDeck(localDeck, kana, correct);
       const nextCard = deck[0] ?? null;
       const sessionTotal = snapshot.sessionTotal + 1;
       const sessionCorrect = snapshot.sessionCorrect + (correct ? 1 : 0);
@@ -375,6 +376,7 @@ export function HiraganaApp() {
           refreshProgress();
         })
         .catch(() => {
+          pendingAnswerRef.current = null;
           showToast("Could not save answer — refreshing round");
           void runRound(activeGroup);
         })
