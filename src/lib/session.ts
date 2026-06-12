@@ -6,6 +6,7 @@ import {
 } from "@/lib/compact-session";
 import { fetchCloudProgress, saveCloudProgress } from "@/lib/cloud-progress";
 import {
+  createDefaultProgress,
   createDefaultSession,
   type AppSession,
   type ProgressState,
@@ -148,4 +149,27 @@ export async function readSession(): Promise<AppSession> {
 
 export async function writeSession(session: AppSession): Promise<void> {
   await writePlaySession(session, { awaitCloud: true });
+}
+
+/** Wipe progress in the cookie and cloud (best effort). */
+export async function resetAllProgress(): Promise<AppSession> {
+  const session: AppSession = {
+    progress: createDefaultProgress(),
+    round: null,
+  };
+  const userId = await getAuthUserId();
+
+  if (!userId) {
+    await writeCookieSession(session, { guest: true });
+    return session;
+  }
+
+  await writeCookieSession(session);
+  try {
+    await persistCloudProgress(userId, session.progress);
+  } catch {
+    // Cookie is already reset; cloud can catch up on the next signed-in write.
+  }
+
+  return session;
 }

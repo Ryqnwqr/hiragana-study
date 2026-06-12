@@ -46,6 +46,7 @@ type DotMap = Record<string, "unseen" | "seen" | "good" | "mid" | "bad">;
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     credentials: "same-origin",
+    cache: "no-store",
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -83,7 +84,7 @@ export function clearGuestSession() {
 }
 
 export function resetProgress() {
-  return request<{ ok: boolean }>("/api/progress", { method: "DELETE" });
+  return request<ProgressResponse>("/api/progress", { method: "DELETE" });
 }
 
 export function startRound(group: string) {

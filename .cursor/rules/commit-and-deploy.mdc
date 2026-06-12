@@ -1,0 +1,14 @@
+---
+description: Commit, push, and deploy after every requested change to hiragana-study
+alwaysApply: true
+---
+
+# Commit and deploy after changes
+
+When the user asks you to make a change to this project, finish by:
+
+1. Committing with a clear message (only when they asked for a change or explicitly asked to commit)
+2. Pushing to the remote branch
+3. Deploying production with `npx vercel --prod --yes`
+
+Do this at the end of the same turn unless deployment is blocked (e.g. build failure). Report the commit hash and production URL.

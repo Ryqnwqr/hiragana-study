@@ -415,12 +415,24 @@ export function HiraganaApp() {
 
   const handleReset = async () => {
     if (!confirm("Reset all progress? This cannot be undone.")) return;
-    await resetProgress();
-    refreshProgress();
-    setSnapshot(null);
-    setLocalDeck([]);
-    setDotMap({});
-    showToast("Progress reset");
+
+    try {
+      // Let in-flight reveal/answer syncs finish so they don't undo the reset.
+      revealRequestRef.current += 1;
+      await answerQueueRef.current.catch(() => {});
+      answerQueueRef.current = Promise.resolve();
+      pendingAnswerRef.current = null;
+
+      const data = await resetProgress();
+      setProgress(data);
+      setSnapshot(null);
+      setLocalDeck([]);
+      setDotMap({});
+      serverDeckRef.current = [];
+      showToast("Progress reset");
+    } catch {
+      showToast("Could not reset progress");
+    }
   };
 
   const roundComplete =

@@ -1,0 +1,24 @@
+import type { ProgressState } from "@/lib/progress";
+import { countMastered, getMasterySummary } from "@/lib/srs";
+
+export function buildProgressResponse(progress: ProgressState) {
+  const total = progress.totalAnswers;
+
+  return {
+    totalAnswers: total,
+    accuracy:
+      total > 0 ? Math.round((progress.totalCorrect / total) * 100) : null,
+    bestStreak: progress.bestStreak,
+    avgRecall: total > 0 ? progress.totalRecallTime / total : null,
+    masteredCount: countMastered(progress),
+    mastery: getMasterySummary(progress),
+    welcome: {
+      mastered: countMastered(progress),
+      accuracy:
+        total > 0 ? Math.round((progress.totalCorrect / total) * 100) : null,
+      bestStreak: progress.bestStreak,
+      avgRecall: total > 0 ? progress.totalRecallTime / total : null,
+      hasProgress: total > 0,
+    },
+  };
+}

@@ -1,39 +1,22 @@
 import { NextResponse } from "next/server";
-import { createDefaultProgress } from "@/lib/progress";
-import { countMastered, getMasterySummary } from "@/lib/srs";
-import { readPlaySession, writePlaySession } from "@/lib/session";
+
+import { buildProgressResponse } from "@/lib/progress-response";
+import { resetAllProgress, readPlaySession } from "@/lib/session";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   const session = await readPlaySession();
-  const { progress } = session;
-  const total = progress.totalAnswers;
-
-  return NextResponse.json({
-    totalAnswers: total,
-    accuracy: total > 0 ? Math.round((progress.totalCorrect / total) * 100) : null,
-    bestStreak: progress.bestStreak,
-    avgRecall: total > 0 ? progress.totalRecallTime / total : null,
-    masteredCount: countMastered(progress),
-    mastery: getMasterySummary(progress),
-    welcome: {
-      mastered: countMastered(progress),
-      accuracy: total > 0 ? Math.round((progress.totalCorrect / total) * 100) : null,
-      bestStreak: progress.bestStreak,
-      avgRecall: total > 0 ? progress.totalRecallTime / total : null,
-      hasProgress: total > 0,
-    },
-  });
+  return NextResponse.json(buildProgressResponse(session.progress));
 }
 
 export async function DELETE() {
-  const session = await readPlaySession();
-  await writePlaySession(
-    {
-      progress: createDefaultProgress(),
-      round: null,
-    },
-    { awaitCloud: true },
-  );
-
-  return NextResponse.json({ ok: true, hadRound: Boolean(session.round) });
+  try {
+    const session = await resetAllProgress();
+    return NextResponse.json(buildProgressResponse(session.progress));
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to reset progress";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
