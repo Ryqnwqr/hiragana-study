@@ -14,8 +14,10 @@ import {
   type PublicCard,
   type RoundSnapshot,
 } from "@/lib/client-api";
+import { AppMark } from "@/components/AppMark";
 import { launchConfetti } from "@/lib/confetti";
 import { fmtSpeed, roundMessage } from "@/lib/format";
+import { lookupRomaji } from "@/lib/romaji-lookup";
 
 type Screen = "welcome" | "study" | "stats";
 type DotMap = Record<string, "unseen" | "seen" | "good" | "mid" | "bad">;
@@ -131,38 +133,44 @@ export function HiraganaApp() {
   const handleFlip = useCallback(() => {
     if (!snapshot?.currentCard || isFlipped || isStartCard) return;
 
+    const kana = snapshot.currentCard.k;
+    const localRomaji = lookupRomaji(kana);
+    if (!localRomaji) {
+      showToast("Unknown character");
+      return;
+    }
+
     const elapsed = Math.min((Date.now() - cardShownAtRef.current) / 1000, 60);
     const requestId = revealRequestRef.current + 1;
     revealRequestRef.current = requestId;
 
     setRecallTime(elapsed);
+    setRomaji(localRomaji);
     setIsFlipped(true);
-    setRomaji(null);
+    setDotMap((prev) => ({
+      ...prev,
+      [kana]: prev[kana] === "unseen" ? "seen" : prev[kana],
+    }));
 
-    void (async () => {
-      try {
-        await answerQueueRef.current;
-
+    // Sync reveal state to the server without blocking the UI.
+    void answerQueueRef.current
+      .then(() => revealCard())
+      .then((result) => {
         if (revealRequestRef.current !== requestId) return;
-
-        const result = await revealCard();
-        if (revealRequestRef.current !== requestId) return;
-
-        setRomaji(result.romaji);
-        setSnapshot(result.snapshot);
         setDotMap(result.dotMap);
-        serverDeckRef.current = result.snapshot.currentCard
-          ? [
-              result.snapshot.currentCard,
-              ...serverDeckRef.current.slice(1),
-            ]
-          : serverDeckRef.current;
-      } catch {
-        if (revealRequestRef.current !== requestId) return;
-        setIsFlipped(false);
-        showToast("Could not reveal card");
-      }
-    })();
+        setSnapshot((prev) =>
+          prev
+            ? {
+                ...prev,
+                ...result.snapshot,
+                currentCard: prev.currentCard,
+              }
+            : result.snapshot,
+        );
+      })
+      .catch(() => {
+        // Local romaji is already shown; answer API will auto-reveal if needed.
+      });
   }, [isFlipped, isStartCard, showToast, snapshot?.currentCard]);
 
   const handleAnswer = useCallback(
@@ -327,6 +335,7 @@ export function HiraganaApp() {
 
       <div className={`screen welcome-screen ${screen === "welcome" ? "active" : ""}`}>
         <div className="welcome-inner">
+          <AppMark size={72} />
           <div className="welcome-logo">ひらがな</div>
           <div className="welcome-chars">あいうえお</div>
           <div className="welcome-tagline">
@@ -392,7 +401,10 @@ export function HiraganaApp() {
 
       <div className={`screen study-screen ${screen === "study" ? "active" : ""}`}>
         <div className="study-header">
-          <div className="logo">ひらがな</div>
+          <div className="logo">
+            <AppMark size={24} />
+            <span>ひらがな</span>
+          </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button
               className="btn-icon"

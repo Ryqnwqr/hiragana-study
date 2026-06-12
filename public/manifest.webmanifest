@@ -6,5 +6,13 @@
   "background_color": "#0c0e14",
   "theme_color": "#0c0e14",
   "orientation": "portrait",
-  "description": "Hiragana flashcard app with spaced repetition and reaction-time scoring"
+  "description": "Hiragana flashcard app with spaced repetition and reaction-time scoring",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
 }

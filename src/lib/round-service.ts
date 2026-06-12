@@ -150,8 +150,9 @@ export function submitAnswer(
   reinserted: boolean;
   confetti: boolean;
 } {
-  const round = session.round;
-  if (!round || !round.deck.length || !round.revealed) {
+  let workingSession = session;
+  const round = workingSession.round;
+  if (!round || !round.deck.length) {
     throw new Error("No active card");
   }
 
@@ -159,16 +160,22 @@ export function submitAnswer(
     throw new Error("Card mismatch");
   }
 
+  if (!round.revealed) {
+    workingSession = revealCurrentCard(workingSession).session;
+  }
+
+  const activeRound = workingSession.round!;
+
   const result = applyAnswer(
-    session.progress,
+    workingSession.progress,
     kana,
     correct,
     recallTime,
-    round.sessionStreak,
-    round.sessionCorrect,
+    activeRound.sessionStreak,
+    activeRound.sessionCorrect,
   );
 
-  const deck = [...round.deck];
+  const deck = [...activeRound.deck];
   deck.shift();
 
   if (result.reinserted) {
@@ -179,7 +186,7 @@ export function submitAnswer(
     deck.splice(insertAt, 0, kana);
   }
 
-  const dotMap = { ...round.dotMap };
+  const dotMap = { ...activeRound.dotMap };
   dotMap[kana] = result.dotStatus;
 
   const confetti =
@@ -189,13 +196,14 @@ export function submitAnswer(
     session: {
       progress: result.progress,
       round: {
-        ...round,
+        ...activeRound,
         deck,
         revealed: false,
         sessionStreak: result.sessionStreak,
         sessionCorrect: result.sessionCorrect,
-        sessionTotal: round.sessionTotal + 1,
-        sessionRecallTotal: round.sessionRecallTotal + Math.min(recallTime, 60),
+        sessionTotal: activeRound.sessionTotal + 1,
+        sessionRecallTotal:
+          activeRound.sessionRecallTotal + Math.min(recallTime, 60),
         dotMap,
       },
     },

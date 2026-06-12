@@ -19,6 +19,10 @@ export const metadata: Metadata = {
   description:
     "Hiragana flashcard app with spaced repetition and reaction-time scoring",
   applicationName: "ひらがな",
+  icons: {
+    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+  },
   appleWebApp: {
     capable: true,
     title: "ひらがな",

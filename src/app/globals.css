@@ -243,6 +243,9 @@ body {
 }
 
 .study-header .logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 20px;
   font-weight: 300;
   color: var(--sakura);

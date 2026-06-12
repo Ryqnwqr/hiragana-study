@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" role="img" aria-label="Hiragana study">
+  <rect width="180" height="180" rx="40" fill="#0c0e14"/>
+  <rect x="8" y="8" width="164" height="164" rx="34" fill="none" stroke="#e06b8b" stroke-width="2" opacity="0.35"/>
+  <text x="90" y="122" text-anchor="middle" font-family="'Noto Sans JP', 'Hiragino Sans', sans-serif" font-size="92" font-weight="300" fill="#e06b8b">&#x3042;</text>
+</svg>
