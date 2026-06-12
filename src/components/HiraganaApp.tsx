@@ -20,33 +20,6 @@ import { fmtSpeed, roundMessage } from "@/lib/format";
 type Screen = "welcome" | "study" | "stats";
 type DotMap = Record<string, "unseen" | "seen" | "good" | "mid" | "bad">;
 
-function optimisticSnapshotAfterAnswer(
-  snapshot: RoundSnapshot,
-  correct: boolean,
-  recallTime: number,
-  nextCard: PublicCard | null,
-): RoundSnapshot {
-  const sessionTotal = snapshot.sessionTotal + 1;
-  const sessionCorrect = correct
-    ? snapshot.sessionCorrect + 1
-    : snapshot.sessionCorrect;
-  const sessionStreak = correct ? snapshot.sessionStreak + 1 : 0;
-  const priorRecallTotal =
-    (snapshot.avgRecall ?? 0) * snapshot.sessionTotal + recallTime;
-
-  return {
-    ...snapshot,
-    currentCard: nextCard,
-    sessionTotal,
-    sessionCorrect,
-    sessionStreak,
-    avgRecall: priorRecallTotal / sessionTotal,
-    remaining: nextCard ? Math.max(0, snapshot.remaining - 1) : 0,
-    revealed: false,
-    roundComplete: !nextCard && sessionTotal > 0,
-  };
-}
-
 export function HiraganaApp() {
   const [screen, setScreen] = useState<Screen>("welcome");
   const [showNav, setShowNav] = useState(false);
@@ -70,6 +43,8 @@ export function HiraganaApp() {
   const toastTimerRef = useRef<number | null>(null);
   const answerQueueRef = useRef(Promise.resolve());
   const pendingAnswerRef = useRef<string | null>(null);
+  const serverDeckRef = useRef<PublicCard[]>([]);
+  const revealRequestRef = useRef(0);
 
   const loadProgress = useCallback(async () => {
     const data = await fetchProgress();
@@ -92,6 +67,9 @@ export function HiraganaApp() {
       setRomaji(null);
       setRecallTime(0);
       pendingAnswerRef.current = null;
+      serverDeckRef.current = deck;
+      answerQueueRef.current = Promise.resolve();
+      revealRequestRef.current += 1;
     },
     [],
   );
@@ -151,25 +129,41 @@ export function HiraganaApp() {
   }, []);
 
   const handleFlip = useCallback(() => {
-    if (!snapshot?.currentCard || isFlipped || pendingAnswerRef.current) return;
+    if (!snapshot?.currentCard || isFlipped || isStartCard) return;
 
-    const kana = snapshot.currentCard.k;
     const elapsed = Math.min((Date.now() - cardShownAtRef.current) / 1000, 60);
+    const requestId = revealRequestRef.current + 1;
+    revealRequestRef.current = requestId;
 
     setRecallTime(elapsed);
     setIsFlipped(true);
     setRomaji(null);
 
-    void revealCard(kana)
-      .then((result) => {
+    void (async () => {
+      try {
+        await answerQueueRef.current;
+
+        if (revealRequestRef.current !== requestId) return;
+
+        const result = await revealCard();
+        if (revealRequestRef.current !== requestId) return;
+
         setRomaji(result.romaji);
+        setSnapshot(result.snapshot);
         setDotMap(result.dotMap);
-      })
-      .catch(() => {
+        serverDeckRef.current = result.snapshot.currentCard
+          ? [
+              result.snapshot.currentCard,
+              ...serverDeckRef.current.slice(1),
+            ]
+          : serverDeckRef.current;
+      } catch {
+        if (revealRequestRef.current !== requestId) return;
         setIsFlipped(false);
         showToast("Could not reveal card");
-      });
-  }, [isFlipped, showToast, snapshot?.currentCard]);
+      }
+    })();
+  }, [isFlipped, isStartCard, showToast, snapshot?.currentCard]);
 
   const handleAnswer = useCallback(
     (correct: boolean) => {
@@ -180,26 +174,11 @@ export function HiraganaApp() {
       pendingAnswerRef.current = kana;
 
       const answeredRecall = recallTime;
-      const nextDeck = localDeck.slice(1);
-      const nextCard = nextDeck[0] ?? null;
 
       flashFeedback(correct);
-      setLocalDeck(nextDeck);
-      setSnapshot((prev) =>
-        prev
-          ? optimisticSnapshotAfterAnswer(
-              prev,
-              correct,
-              answeredRecall,
-              nextCard,
-            )
-          : prev,
-      );
+      revealRequestRef.current += 1;
       setIsFlipped(false);
       setRomaji(null);
-
-      const optimisticDot: DotMap[string] = correct ? "good" : "bad";
-      setDotMap((prev) => ({ ...prev, [kana]: optimisticDot }));
 
       answerQueueRef.current = answerQueueRef.current
         .then(async () => {
@@ -207,6 +186,7 @@ export function HiraganaApp() {
           setSnapshot(result.snapshot);
           setDotMap(result.dotMap);
           setLocalDeck(result.deck);
+          serverDeckRef.current = result.deck;
 
           if (result.confetti) launchConfetti(confettiRef.current);
           void loadProgress();
@@ -225,7 +205,6 @@ export function HiraganaApp() {
       activeGroup,
       flashFeedback,
       isFlipped,
-      localDeck,
       loadProgress,
       recallTime,
       runRound,

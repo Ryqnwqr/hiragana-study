@@ -397,44 +397,69 @@ body {
   border-radius: var(--r);
   position: relative;
   will-change: transform;
+  overflow: hidden;
+  isolation: isolate;
+  background: var(--card-b);
 }
 
 .card-face {
   position: absolute;
   inset: 0;
-  border-radius: var(--r);
+  border-radius: inherit;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-direction: column;
-  transition: opacity 0.2s, transform 0.2s;
+  transition: opacity 0.2s, transform 0.2s, visibility 0.2s;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .c-front {
   background: var(--card-f);
-  border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
   z-index: 2;
+}
+
+.c-front::after,
+.c-back::after,
+.c-start::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.c-back::after {
+  box-shadow: inset 0 0 0 1px rgba(224, 107, 139, 0.18);
+}
+
+.c-start::after {
+  box-shadow: inset 0 0 0 1px rgba(224, 107, 139, 0.1);
 }
 
 .c-front.gone {
   opacity: 0;
   transform: scale(0.96);
+  visibility: hidden;
   pointer-events: none;
   z-index: 1;
 }
 
 .c-back {
   background: var(--card-b);
-  border: 1px solid rgba(224, 107, 139, 0.2);
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
   z-index: 1;
   opacity: 0;
+  visibility: hidden;
   transform: scale(0.96);
 }
 
 .c-back.shown {
   opacity: 1;
+  visibility: visible;
   transform: scale(1);
   z-index: 2;
   pointer-events: all;
@@ -442,15 +467,16 @@ body {
 
 .c-start {
   background: var(--card-b);
-  border: 1px solid rgba(224, 107, 139, 0.12);
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
   z-index: 1;
   opacity: 0;
+  visibility: hidden;
   transform: scale(0.96);
 }
 
 .c-start.shown {
   opacity: 1;
+  visibility: visible;
   transform: scale(1);
   z-index: 3;
 }
@@ -580,7 +606,7 @@ body {
 .swipe-overlay {
   position: absolute;
   inset: 0;
-  border-radius: var(--r);
+  border-radius: inherit;
   pointer-events: none;
   z-index: 10;
   opacity: 0;

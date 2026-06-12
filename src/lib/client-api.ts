@@ -45,6 +45,7 @@ type DotMap = Record<string, "unseen" | "seen" | "good" | "mid" | "bad">;
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
+    credentials: "same-origin",
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -87,14 +88,14 @@ export function beginRound() {
   });
 }
 
-export function revealCard(kana: string) {
+export function revealCard() {
   return request<{
     romaji: string;
     snapshot: RoundSnapshot;
     dotMap: DotMap;
   }>("/api/round/reveal", {
     method: "POST",
-    body: JSON.stringify({ kana }),
+    body: JSON.stringify({}),
   });
 }
 

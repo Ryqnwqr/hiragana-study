@@ -231,7 +231,9 @@ export function StudyCard({
       <div className="card-wrap" ref={wrapRef}>
         <div className="card" ref={cardRef}>
           <div className="swipe-overlay" ref={overlayRef} />
-          <div className={`card-face c-front ${isFlipped ? "gone" : ""}`}>
+          <div
+            className={`card-face c-front ${isFlipped || isStartCard ? "gone" : ""}`}
+          >
             <div className="timer-track">
               <div className="timer-fill" ref={timerFillRef} />
             </div>

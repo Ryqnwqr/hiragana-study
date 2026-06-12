@@ -1,20 +1,32 @@
 import { NextResponse } from "next/server";
+import { getRomaji } from "@/lib/hiragana";
 import { buildRoundSnapshot, revealCurrentCard } from "@/lib/round-service";
 import { readSession, writeSession } from "@/lib/session";
 
-export async function POST(request: Request) {
-  const body = (await request.json()) as { kana?: string };
+export async function POST() {
   const session = await readSession();
+  const round = session.round;
 
-  if (!session.round?.deck.length) {
+  if (!round?.deck.length) {
     return NextResponse.json({ error: "No active card" }, { status: 400 });
   }
 
-  if (body.kana && body.kana !== session.round.deck[0]) {
-    return NextResponse.json({ error: "Card mismatch" }, { status: 400 });
-  }
+  const kana = round.deck[0];
 
   try {
+    if (round.revealed) {
+      const romaji = getRomaji(kana);
+      if (!romaji) {
+        return NextResponse.json({ error: "Unknown character" }, { status: 400 });
+      }
+
+      return NextResponse.json({
+        romaji,
+        snapshot: buildRoundSnapshot(session),
+        dotMap: round.dotMap,
+      });
+    }
+
     const { session: nextSession, romaji } = revealCurrentCard(session);
     await writeSession(nextSession);
 

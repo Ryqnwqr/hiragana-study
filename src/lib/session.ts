@@ -1,10 +1,10 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import {
-  createDefaultSession,
-  normalizeProgress,
-  type AppSession,
-} from "@/lib/progress";
+  compressSession,
+  expandLegacyOrCompact,
+} from "@/lib/compact-session";
+import { createDefaultSession, type AppSession } from "@/lib/progress";
 
 const COOKIE_NAME = "hira_session";
 
@@ -28,9 +28,7 @@ export async function readSession(): Promise<AppSession> {
 
   try {
     const { payload } = await jwtVerify(token, getSecret());
-    const progress = normalizeProgress(payload.progress as AppSession["progress"]);
-    const round = (payload.round as AppSession["round"]) ?? null;
-    return { progress, round };
+    return expandLegacyOrCompact(payload as Record<string, unknown>);
   } catch {
     return createDefaultSession();
   }
@@ -38,10 +36,7 @@ export async function readSession(): Promise<AppSession> {
 
 export async function writeSession(session: AppSession): Promise<void> {
   const cookieStore = await cookies();
-  const token = await new SignJWT({
-    progress: session.progress,
-    round: session.round,
-  })
+  const token = await new SignJWT(compressSession(session))
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("180d")
