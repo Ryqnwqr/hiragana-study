@@ -55,25 +55,40 @@ export function compressProgress(progress: ProgressState): CompactProgress {
   };
 }
 
+export function isCompactProgress(
+  value: unknown,
+): value is CompactProgress {
+  return (
+    typeof value === "object" &&
+    value != null &&
+    Array.isArray((value as CompactProgress).s) &&
+    Array.isArray((value as CompactProgress).t) &&
+    Array.isArray((value as CompactProgress).seen)
+  );
+}
+
 export function expandProgress(compact: CompactProgress): ProgressState {
   const scores: Record<string, number> = {};
   const avgTimes: Record<string, number | null> = {};
   const allTimeSeen: Record<string, number> = {};
+  const scoreList = compact.s ?? [];
+  const timeList = compact.t ?? [];
+  const seenList = compact.seen ?? [];
 
   ALL_CARDS.forEach((card, index) => {
-    scores[card.k] = compact.s[index] ?? 4;
-    avgTimes[card.k] = compact.t[index] ?? null;
-    if (compact.seen[index]) allTimeSeen[card.k] = compact.seen[index];
+    scores[card.k] = scoreList[index] ?? 4;
+    avgTimes[card.k] = timeList[index] ?? null;
+    if (seenList[index]) allTimeSeen[card.k] = seenList[index];
   });
 
   return normalizeProgress({
     scores,
     avgTimes,
-    totalAnswers: compact.ta,
-    totalCorrect: compact.tc,
-    bestStreak: compact.bs,
+    totalAnswers: compact.ta ?? 0,
+    totalCorrect: compact.tc ?? 0,
+    bestStreak: compact.bs ?? 0,
     allTimeSeen,
-    totalRecallTime: compact.trt,
+    totalRecallTime: compact.trt ?? 0,
   });
 }
 

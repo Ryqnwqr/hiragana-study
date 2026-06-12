@@ -124,12 +124,15 @@ export function HiraganaApp() {
 
       setAuthChecked(true);
 
-      const [{ groups: groupNames }, progressData] = await Promise.all([
-        fetchGroups(),
-        loadProgress(),
-      ]);
+      const { groups: groupNames } = await fetchGroups();
       setGroups(groupNames);
-      setProgress(progressData);
+
+      try {
+        const progressData = await loadProgress();
+        setProgress(progressData);
+      } catch {
+        setProgress(null);
+      }
 
       const standalone =
         // @ts-expect-error legacy iOS standalone flag
@@ -187,11 +190,13 @@ export function HiraganaApp() {
       try {
         const data = await startRound(group);
         applyRoundData(data, data.dotMap, data.deck, true);
+      } catch {
+        showToast("Could not start round");
       } finally {
         setRoundLoading(false);
       }
     },
-    [applyRoundData],
+    [applyRoundData, showToast],
   );
 
   const openAuthPrompt = useCallback((fromStartCard = false) => {

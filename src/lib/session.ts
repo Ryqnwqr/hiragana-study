@@ -79,14 +79,20 @@ export async function readSession(): Promise<AppSession> {
   const userId = await getAuthUserId();
   if (!userId) return cookieSession;
 
-  const supabase = await createClient();
-  const cloudProgress = await fetchCloudProgress(supabase, userId);
-  if (!cloudProgress) return cookieSession;
+  try {
+    const supabase = await createClient();
+    const cloudProgress = await fetchCloudProgress(supabase, userId);
+    if (cloudProgress) {
+      return {
+        progress: cloudProgress,
+        round: cookieSession.round,
+      };
+    }
+  } catch {
+    // Fall back to cookie progress if cloud read fails.
+  }
 
-  return {
-    progress: cloudProgress,
-    round: cookieSession.round,
-  };
+  return cookieSession;
 }
 
 export async function writeSession(session: AppSession): Promise<void> {
@@ -99,6 +105,11 @@ export async function writeSession(session: AppSession): Promise<void> {
   }
 
   await writeCookieSession(session);
-  const supabase = await createClient();
-  await saveCloudProgress(supabase, userId, session.progress);
+
+  try {
+    const supabase = await createClient();
+    await saveCloudProgress(supabase, userId, session.progress);
+  } catch {
+    // Keep the round cookie even if cloud sync fails temporarily.
+  }
 }

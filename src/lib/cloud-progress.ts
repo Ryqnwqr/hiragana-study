@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   compressProgress,
   expandProgress,
-  type CompactProgress,
+  isCompactProgress,
 } from "@/lib/compact-session";
 import type { ProgressState } from "@/lib/progress";
 
@@ -18,9 +18,9 @@ export async function fetchCloudProgress(
     .maybeSingle();
 
   if (error) throw error;
-  if (!data?.payload) return null;
+  if (!isCompactProgress(data?.payload)) return null;
 
-  return expandProgress(data.payload as CompactProgress);
+  return expandProgress(data.payload);
 }
 
 export async function saveCloudProgress(
