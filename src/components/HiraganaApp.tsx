@@ -58,7 +58,6 @@ export function HiraganaApp() {
   const [user, setUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [showAuthPrompt, setShowAuthPrompt] = useState(false);
-  const [syncPending, setSyncPending] = useState(false);
 
   const sortedMastery = useMemo(
     () => sortMasteryCells(progress?.mastery ?? [], masterySort),
@@ -69,7 +68,7 @@ export function HiraganaApp() {
   const confettiRef = useRef<HTMLCanvasElement>(null);
   const toastTimerRef = useRef<number | null>(null);
   const answerQueueRef = useRef(Promise.resolve());
-  const pendingAnswerRef = useRef<string | null>(null);
+  const inFlightAnswersRef = useRef(new Set<string>());
   const activeRoundIdRef = useRef<string | null>(null);
   const localDeckRef = useRef<PublicCard[]>([]);
   const revealRequestRef = useRef(0);
@@ -103,8 +102,7 @@ export function HiraganaApp() {
       setIsFlipped(false);
       setRomaji(null);
       setRecallTime(0);
-      pendingAnswerRef.current = null;
-      setSyncPending(false);
+      inFlightAnswersRef.current.clear();
       activeRoundIdRef.current = nextSnapshot.roundId;
       localDeckRef.current = deck;
       answerQueueRef.current = Promise.resolve();
@@ -117,8 +115,7 @@ export function HiraganaApp() {
     revealRequestRef.current += 1;
     await answerQueueRef.current.catch(() => {});
     answerQueueRef.current = Promise.resolve();
-    pendingAnswerRef.current = null;
-    setSyncPending(false);
+    inFlightAnswersRef.current.clear();
   }, []);
 
   useEffect(() => {
@@ -214,8 +211,7 @@ export function HiraganaApp() {
         applyRoundData(data, data.dotMap, data.deck, true);
       } catch {
         showToast("Could not start round");
-        pendingAnswerRef.current = null;
-        setSyncPending(false);
+        inFlightAnswersRef.current.clear();
       } finally {
         roundBusyRef.current = false;
       }
@@ -296,7 +292,6 @@ export function HiraganaApp() {
 
   const handleFlip = useCallback(() => {
     if (!snapshot?.currentCard || isFlipped || isStartCard) return;
-    if (pendingAnswerRef.current !== null) return;
 
     const kana = snapshot.currentCard.k;
     const localRomaji = lookupRomaji(kana);
@@ -345,9 +340,8 @@ export function HiraganaApp() {
       if (!snapshot?.currentCard || !isFlipped) return;
 
       const kana = snapshot.currentCard.k;
-      if (pendingAnswerRef.current !== null) return;
-      pendingAnswerRef.current = kana;
-      setSyncPending(true);
+      if (inFlightAnswersRef.current.has(kana)) return;
+      inFlightAnswersRef.current.add(kana);
 
       const answeredRecall = recallTime;
       const roundId = snapshot.roundId;
@@ -390,8 +384,7 @@ export function HiraganaApp() {
         result: Awaited<ReturnType<typeof submitAnswer>>,
       ) => {
         if (activeRoundIdRef.current !== roundId) {
-          pendingAnswerRef.current = null;
-          setSyncPending(false);
+          inFlightAnswersRef.current.delete(kana);
           return;
         }
         setSnapshot(result.snapshot);
@@ -400,12 +393,10 @@ export function HiraganaApp() {
         localDeckRef.current = result.deck;
         if (result.confetti) launchConfetti(confettiRef.current);
         refreshProgress();
-        pendingAnswerRef.current = null;
-        setSyncPending(false);
+        inFlightAnswersRef.current.delete(kana);
       };
 
       const saveAnswer = async () => {
-        await revealCard().catch(() => {});
         try {
           return await submitAnswer(kana, correct, answeredRecall);
         } catch {
@@ -420,6 +411,7 @@ export function HiraganaApp() {
           applyAnswerResult(result);
         })
         .catch(async () => {
+          inFlightAnswersRef.current.delete(kana);
           showToast("Could not save answer — refreshing round");
           await runRound(activeGroup);
         });
@@ -447,11 +439,11 @@ export function HiraganaApp() {
       }
       if (event.code === "ArrowRight" || event.code === "KeyL") {
         if (isStartCard) dismissStartCard();
-        else if (isFlipped && !syncPending) handleAnswer(true);
+        else if (isFlipped) handleAnswer(true);
       }
       if (event.code === "ArrowLeft" || event.code === "KeyH") {
         if (isStartCard) dismissStartCard();
-        else if (isFlipped && !syncPending) handleAnswer(false);
+        else if (isFlipped) handleAnswer(false);
       }
     };
 
@@ -464,7 +456,6 @@ export function HiraganaApp() {
     isFlipped,
     isStartCard,
     screen,
-    syncPending,
   ]);
 
   const goScreen = (next: Screen) => {
@@ -479,7 +470,7 @@ export function HiraganaApp() {
   };
 
   const handleGroupChange = (group: string) => {
-    if (syncPending || group === activeGroup) return;
+    if (group === activeGroup) return;
     setActiveGroup(group);
     void runRound(group);
   };
@@ -634,7 +625,6 @@ export function HiraganaApp() {
                 key={name}
                 type="button"
                 className={`gtab ${name === activeGroup ? "active" : ""}`}
-                disabled={syncPending}
                 onClick={() => handleGroupChange(name)}
               >
                 {name}
@@ -680,7 +670,6 @@ export function HiraganaApp() {
               romaji={romaji}
               isFlipped={isFlipped}
               isStartCard={isStartCard}
-              syncPending={syncPending}
               recallTime={recallTime}
               roundLabel={snapshot?.group ?? activeGroup}
               roundSize={snapshot?.roundSize ?? localDeck.length}

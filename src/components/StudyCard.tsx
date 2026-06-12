@@ -9,7 +9,6 @@ type StudyCardProps = {
   romaji: string | null;
   isFlipped: boolean;
   isStartCard: boolean;
-  syncPending: boolean;
   recallTime: number;
   roundLabel: string;
   roundSize: number;
@@ -30,7 +29,6 @@ export function StudyCard({
   romaji,
   isFlipped,
   isStartCard,
-  syncPending,
   recallTime,
   roundLabel,
   roundSize,
@@ -52,14 +50,11 @@ export function StudyCard({
   const onDismissStartRef = useRef(onDismissStart);
   const isFlippedRef = useRef(isFlipped);
   const isStartCardRef = useRef(isStartCard);
-  const syncPendingRef = useRef(syncPending);
-
   onFlipRef.current = onFlip;
   onAnswerRef.current = onAnswer;
   onDismissStartRef.current = onDismissStart;
   isFlippedRef.current = isFlipped;
   isStartCardRef.current = isStartCard;
-  syncPendingRef.current = syncPending;
 
   useEffect(() => {
     const card = cardRef.current;
@@ -180,10 +175,6 @@ export function StudyCard({
           card.style.transition = "";
           return;
         }
-        if (syncPendingRef.current) {
-          card.style.transition = "";
-          return;
-        }
         if (!isFlippedRef.current) onFlipRef.current();
         card.style.transition = "";
         return;
@@ -196,19 +187,6 @@ export function StudyCard({
       }
 
       if (Math.abs(dx) >= THROW) {
-        if (!isStartCardRef.current && syncPendingRef.current) {
-          card.style.transition = "transform 0.32s cubic-bezier(0.34,1.56,0.64,1)";
-          card.style.transform = "";
-          overlay.style.opacity = "0";
-          lblM.style.opacity = "0";
-          lblG.style.opacity = "0";
-          window.setTimeout(() => {
-            card.style.transition = "";
-          }, 320);
-          dx = 0;
-          return;
-        }
-
         const dir = dx > 0 ? 1 : -1;
         card.style.transition = "transform 0.2s ease, opacity 0.2s ease";
         card.style.transform = `translateX(${dir * 460}px) rotate(${dir * 28}deg)`;
