@@ -45,7 +45,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${notoSansJp.variable}`}>
+    <html
+      lang="en"
+      className={`${inter.variable} ${notoSansJp.variable}`}
+      suppressHydrationWarning
+    >
       <head>
         <SafeAreaScript />
       </head>

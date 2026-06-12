@@ -52,7 +52,9 @@ export function HiraganaApp() {
   const [isStartCard, setIsStartCard] = useState(false);
   const [recallTime, setRecallTime] = useState(0);
   const [toast, setToast] = useState("");
-  const [flash, setFlash] = useState<"" | "good" | "bad">("");
+  const [flash, setFlash] = useState<{ kind: "good" | "bad"; id: number } | null>(
+    null,
+  );
   const [showBanner, setShowBanner] = useState(false);
   const [masterySort, setMasterySort] = useState<MasterySort>("deck");
   const [user, setUser] = useState<User | null>(null);
@@ -65,6 +67,7 @@ export function HiraganaApp() {
   );
 
   const cardShownAtRef = useRef(0);
+  const groupScrollRef = useRef<HTMLDivElement>(null);
   const confettiRef = useRef<HTMLCanvasElement>(null);
   const toastTimerRef = useRef<number | null>(null);
   const answerQueueRef = useRef(Promise.resolve());
@@ -185,10 +188,14 @@ export function HiraganaApp() {
     };
   }, [loadProgress]);
 
+  const currentKana = snapshot?.currentCard?.k;
   useEffect(() => {
-    if (!snapshot?.currentCard || isStartCard || isFlipped) return;
+    // Reset the recall clock only when the visible card actually changes —
+    // not on every snapshot mutation, or a late background sync would reset
+    // the timer mid-view and record an artificially fast recall time.
+    if (!currentKana || isStartCard || isFlipped) return;
     cardShownAtRef.current = Date.now();
-  }, [snapshot?.currentCard?.k, isStartCard, isFlipped, snapshot]);
+  }, [currentKana, isStartCard, isFlipped]);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -196,10 +203,40 @@ export function HiraganaApp() {
     toastTimerRef.current = window.setTimeout(() => setToast(""), 2200);
   }, []);
 
+  const flashIdRef = useRef(0);
   const flashFeedback = useCallback((ok: boolean) => {
-    setFlash(ok ? "good" : "bad");
-    window.setTimeout(() => setFlash(""), 400);
+    flashIdRef.current += 1;
+    // The id forces a remount so the animation replays even on repeats.
+    setFlash({ kind: ok ? "good" : "bad", id: flashIdRef.current });
   }, []);
+
+  // Fade whichever edge of the category bar still has hidden tabs.
+  const updateGroupFades = useCallback(() => {
+    const el = groupScrollRef.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    el.classList.toggle("fade-left", el.scrollLeft > 4);
+    el.classList.toggle("fade-right", el.scrollLeft < max - 4);
+  }, []);
+
+  // Let a vertical mouse wheel scroll the category bar horizontally.
+  const handleGroupWheel = useCallback(
+    (event: React.WheelEvent<HTMLDivElement>) => {
+      const el = groupScrollRef.current;
+      if (!el || el.scrollWidth <= el.clientWidth) return;
+      if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
+        el.scrollLeft += event.deltaY;
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    updateGroupFades();
+    const onResize = () => updateGroupFades();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [groups, screen, updateGroupFades]);
 
   const runRound = useCallback(
     async (group: string) => {
@@ -510,7 +547,7 @@ export function HiraganaApp() {
 
   return (
     <>
-      <div id="flash" className={flash ? `f-${flash}` : ""} />
+      {flash && <div key={flash.id} id="flash" className={`f-${flash.kind}`} />}
       <div className={`toast ${toast ? "show" : ""}`}>{toast}</div>
       <canvas id="confetti" ref={confettiRef} />
 
@@ -550,28 +587,29 @@ export function HiraganaApp() {
           <div className="welcome-logo">ひらがな</div>
           <div className="welcome-chars">あいうえお</div>
           <div className="welcome-tagline">
-            Master hiragana with spaced repetition.
+            Master hiragana with spaced repetition and smart marking.
             <br />
-            Reaction time shapes your mastery score.
+            Your speed, consistency, and history shape every character&apos;s
+            mastery.
           </div>
           <div className="welcome-how">
             <div className="wh-row">
               <span className="wh-color" style={{ color: "var(--green)" }}>
-                Fast recall
+                Fast, confident recall
               </span>{" "}
-              earns more mastery per card
+              lifts mastery the quickest
             </div>
             <div className="wh-row">
               <span className="wh-color" style={{ color: "var(--gold)" }}>
-                Slow recall
+                Slower or unsure answers
               </span>{" "}
-              earns less — cards stay in rotation longer
+              earn less and keep cards in rotation
             </div>
             <div className="wh-row">
               <span className="wh-color" style={{ color: "var(--red)" }}>
-                Wrong answers
+                Misses
               </span>{" "}
-              always lose 2 points and repeat soon
+              set a card back and bring it round again soon
             </div>
           </div>
 
@@ -618,7 +656,12 @@ export function HiraganaApp() {
           </div>
         </div>
 
-        <div className="group-scroll">
+        <div
+          className="group-scroll"
+          ref={groupScrollRef}
+          onScroll={updateGroupFades}
+          onWheel={handleGroupWheel}
+        >
           <div className="group-row">
             {groups.map((name) => (
               <button

@@ -235,9 +235,10 @@ body {
 
 .study-header {
   width: 100%;
-  padding: 18px max(20px, var(--sar)) 4px max(20px, var(--sal));
+  /* Leave room on the right for the fixed auth pill so they never collide. */
+  padding: 16px max(76px, var(--sar)) 4px max(20px, var(--sal));
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
   flex-shrink: 0;
 }
@@ -245,9 +246,9 @@ body {
 .study-header .logo {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
-  font-size: 26px;
+  justify-content: flex-start;
+  gap: 9px;
+  font-size: 22px;
   font-weight: 300;
   color: var(--sakura);
   letter-spacing: 0.06em;
@@ -263,8 +264,8 @@ body {
 .auth-header-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 8px 14px;
+  gap: 7px;
+  padding: 7px 13px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: rgba(19, 21, 31, 0.92);
@@ -274,7 +275,23 @@ body {
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  max-width: min(52vw, 220px);
+  max-width: min(48vw, 200px);
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    box-shadow 0.15s,
+    transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.auth-header-btn--signin {
+  color: var(--sakura);
+  border-color: rgba(224, 107, 139, 0.35);
+  background: rgba(224, 107, 139, 0.1);
+}
+
+.auth-header-btn--account {
+  padding-left: 6px;
 }
 
 .auth-header-btn--ghost {
@@ -284,25 +301,120 @@ body {
   min-height: 36px;
 }
 
+@media (hover: hover) {
+  .auth-header-btn:hover {
+    border-color: rgba(224, 107, 139, 0.5);
+    background: rgba(28, 30, 42, 0.96);
+  }
+  .auth-header-btn--signin:hover {
+    background: rgba(224, 107, 139, 0.18);
+  }
+}
+
 .auth-header-btn:active {
-  border-color: rgba(224, 107, 139, 0.4);
+  transform: scale(0.97);
+}
+
+.auth-header-btn:focus-visible {
+  outline: none;
+  border-color: var(--sakura);
+  box-shadow: 0 0 0 3px rgba(224, 107, 139, 0.25);
+}
+
+.auth-icon {
+  flex-shrink: 0;
+}
+
+.auth-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--sakura), var(--sakura2));
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
 }
 
 .auth-header-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--sub);
 }
 
-.auth-header-sep {
+.auth-chevron {
   color: var(--sub);
-  opacity: 0.55;
-}
-
-.auth-header-action {
-  color: var(--sakura);
   flex-shrink: 0;
+  transition: transform 0.18s ease;
+}
+
+.auth-chevron.open {
+  transform: rotate(180deg);
+}
+
+.auth-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 184px;
+  max-width: min(78vw, 260px);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55);
+  padding: 8px;
+  z-index: 460;
+  transform-origin: top right;
+  animation: authMenuIn 0.16s ease;
+}
+
+@keyframes authMenuIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.auth-menu-email {
+  font-size: 11px;
+  color: var(--sub);
+  padding: 4px 10px 9px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+.auth-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  border: none;
+  background: transparent;
+  color: var(--red);
+  font-family: "Inter", sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.auth-menu-item:hover,
+.auth-menu-item:focus-visible {
+  outline: none;
+  background: rgba(224, 88, 88, 0.12);
 }
 
 .study-header .btn-icon {
@@ -341,9 +453,46 @@ body {
   display: none;
 }
 
+/* Fade the edge that has more content, hinting the bar scrolls. */
+.group-scroll.fade-left {
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 18px);
+  mask-image: linear-gradient(90deg, transparent 0, #000 18px);
+}
+
+.group-scroll.fade-right {
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    #000 calc(100% - 18px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    90deg,
+    #000 calc(100% - 18px),
+    transparent 100%
+  );
+}
+
+.group-scroll.fade-left.fade-right {
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent 0,
+    #000 18px,
+    #000 calc(100% - 18px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    90deg,
+    transparent 0,
+    #000 18px,
+    #000 calc(100% - 18px),
+    transparent 100%
+  );
+}
+
 .group-row {
   display: flex;
   gap: 7px;
+  width: max-content;
   white-space: nowrap;
 }
 
@@ -360,6 +509,7 @@ body {
   letter-spacing: 0.04em;
   transition: all 0.15s;
   white-space: nowrap;
+  flex-shrink: 0;
   -webkit-tap-highlight-color: transparent;
 }
 

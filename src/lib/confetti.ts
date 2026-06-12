@@ -4,11 +4,17 @@ export function launchConfetti(canvas: HTMLCanvasElement | null) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
+  // Scale the backing store to the device pixel ratio so pieces stay crisp,
+  // then work in CSS pixels for all the physics below.
+  const dpr = window.devicePixelRatio || 1;
+  const W = window.innerWidth;
+  const H = window.innerHeight;
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  ctx.scale(dpr, dpr);
 
   const pieces = Array.from({ length: 70 }, () => ({
-    x: Math.random() * canvas.width,
+    x: Math.random() * W,
     y: -10,
     r: Math.random() * 6 + 3,
     vx: (Math.random() - 0.5) * 5,
@@ -20,7 +26,7 @@ export function launchConfetti(canvas: HTMLCanvasElement | null) {
   }));
 
   const draw = () => {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, W, H);
     let alive = false;
 
     for (const piece of pieces) {
