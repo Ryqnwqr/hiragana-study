@@ -3,11 +3,11 @@ import {
   ALL_GROUP,
   getCardsForGroup,
   getRomaji,
-  type HiraganaCard,
 } from "@/lib/hiragana";
 import { getReinsertIndex } from "@/lib/deck-advance";
+import { buildDeck } from "@/lib/deck-build";
 import type { ActiveRound, AppSession } from "@/lib/progress";
-import { applyAnswer, buildDeck, shuffleDeck } from "@/lib/srs";
+import { applyAnswer } from "@/lib/srs";
 
 export type PublicCard = {
   k: string;
@@ -29,10 +29,6 @@ export type RoundSnapshot = {
   revealed: boolean;
   roundComplete: boolean;
 };
-
-function toPublicCard(card: HiraganaCard): PublicCard {
-  return { k: card.k, group: card.group };
-}
 
 function currentCardFromRound(round: ActiveRound): PublicCard | null {
   if (!round.deck.length) return null;
@@ -73,8 +69,8 @@ export function buildRoundSnapshot(
     sessionCorrect: round.sessionCorrect,
     sessionTotal: round.sessionTotal,
     avgRecall:
-      round.sessionTotal > 0
-        ? round.sessionRecallTotal / round.sessionTotal
+      round.sessionCorrect > 0
+        ? round.sessionRecallTotal / round.sessionCorrect
         : null,
     masteredCount: Object.values(session.progress.scores).filter(
       (score) => score >= 7,
@@ -93,15 +89,47 @@ export function startRound(session: AppSession, group: string): AppSession {
   }
 
   const deck = buildDeck(cards, session.progress);
+  return seedRound(
+    session,
+    group,
+    deck.map((card) => card.k),
+  );
+}
+
+/**
+ * Register a deck the client already built (for instant category switches).
+ * Falls back to a server-built deck if the client's is empty/invalid, and
+ * sanitises the kana so a tampered client can't inject unknown characters.
+ */
+export function startRoundWithDeck(
+  session: AppSession,
+  group: string,
+  roundId: string | undefined,
+  deckKanas: string[],
+): AppSession {
+  const valid = new Set(getCardsForGroup(group).map((card) => card.k));
+  const deck = deckKanas.filter((kana) => valid.has(kana)).slice(0, 25);
+
+  if (!deck.length) return startRound(session, group);
+
+  return seedRound(session, group, deck, roundId);
+}
+
+function seedRound(
+  session: AppSession,
+  group: string,
+  deck: string[],
+  roundId?: string,
+): AppSession {
   const dotMap: ActiveRound["dotMap"] = {};
-  for (const card of deck) dotMap[card.k] = "unseen";
+  for (const kana of deck) dotMap[kana] = "unseen";
 
   return {
     ...session,
     round: {
-      id: randomUUID(),
+      id: roundId || randomUUID(),
       group: group || ALL_GROUP,
-      deck: deck.map((card) => card.k),
+      deck,
       revealed: false,
       sessionStreak: 0,
       sessionCorrect: 0,
@@ -199,8 +227,10 @@ export function submitAnswer(
         sessionStreak: result.sessionStreak,
         sessionCorrect: result.sessionCorrect,
         sessionTotal: activeRound.sessionTotal + 1,
+        // Only correct answers contribute to the recall-speed average.
         sessionRecallTotal:
-          activeRound.sessionRecallTotal + Math.min(recallTime, 60),
+          activeRound.sessionRecallTotal +
+          (correct ? Math.min(Math.max(recallTime, 0), 60) : 0),
         dotMap,
       },
     },
@@ -209,22 +239,3 @@ export function submitAnswer(
   };
 }
 
-export function shuffleActiveRound(session: AppSession): AppSession {
-  const round = session.round;
-  if (!round || !round.deck.length) return session;
-
-  const cards = round.deck
-    .map((kana) => getCardsForGroup(round.group).find((card) => card.k === kana))
-    .filter((card): card is HiraganaCard => Boolean(card));
-
-  const shuffled = shuffleDeck(cards);
-
-  return {
-    ...session,
-    round: {
-      ...round,
-      deck: shuffled.map((card) => card.k),
-      revealed: false,
-    },
-  };
-}

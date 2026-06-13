@@ -15,9 +15,11 @@ import {
   submitAnswer,
   syncAuthProgress,
   type ProgressResponse,
+  type ProgressWeights,
   type PublicCard,
   type RoundSnapshot,
 } from "@/lib/client-api";
+import { buildLocalDeck, makeRoundId } from "@/lib/client-deck";
 import {
   clearAuthSessionPolicy,
   enforceAuthSessionPolicy,
@@ -70,7 +72,7 @@ export function HiraganaApp() {
   const groupScrollRef = useRef<HTMLDivElement>(null);
   const confettiRef = useRef<HTMLCanvasElement>(null);
   const toastTimerRef = useRef<number | null>(null);
-  const answerQueueRef = useRef(Promise.resolve());
+  const answerQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const inFlightAnswersRef = useRef(new Set<string>());
   const activeRoundIdRef = useRef<string | null>(null);
   const localDeckRef = useRef<PublicCard[]>([]);
@@ -78,10 +80,13 @@ export function HiraganaApp() {
   const authPromptDismissedRef = useRef(false);
   const authFromStartCardRef = useRef(false);
   const roundBusyRef = useRef(false);
+  const progressWeightsRef = useRef<ProgressWeights | null>(null);
+  const prevRoundCompleteRef = useRef(false);
 
   const loadProgress = useCallback(async () => {
     const data = await fetchProgress();
     setProgress(data);
+    progressWeightsRef.current = data.weights;
     return data;
   }, []);
 
@@ -97,6 +102,7 @@ export function HiraganaApp() {
       nextDots: DotMap,
       deck: PublicCard[],
       awaitingStart = false,
+      pending?: Promise<unknown>,
     ) => {
       setSnapshot(nextSnapshot);
       setDotMap(nextDots);
@@ -108,8 +114,35 @@ export function HiraganaApp() {
       inFlightAnswersRef.current.clear();
       activeRoundIdRef.current = nextSnapshot.roundId;
       localDeckRef.current = deck;
-      answerQueueRef.current = Promise.resolve();
+      // Chain answers behind the server registration so a reveal/answer never
+      // reaches the server before the round it belongs to exists there.
+      answerQueueRef.current = pending ?? Promise.resolve();
       revealRequestRef.current += 1;
+    },
+    [],
+  );
+
+  const buildLocalSnapshot = useCallback(
+    (roundId: string, group: string, deck: PublicCard[]): RoundSnapshot => {
+      const scores = progressWeightsRef.current?.scores ?? {};
+      const masteredCount = Object.values(scores).filter(
+        (score) => score >= 7,
+      ).length;
+      return {
+        roundId,
+        group,
+        roundSize: Math.max(deck.length, 1),
+        remaining: deck.length,
+        sessionStreak: 0,
+        sessionCorrect: 0,
+        sessionTotal: 0,
+        avgRecall: null,
+        masteredCount,
+        currentCard: deck[0] ?? null,
+        awaitingStart: true,
+        revealed: false,
+        roundComplete: false,
+      };
     },
     [],
   );
@@ -151,7 +184,21 @@ export function HiraganaApp() {
       if (!activeUser) {
         void clearGuestSession().then(refreshAfterGuestClear);
       } else {
-        refreshAfterGuestClear();
+        // Signed in: pull the cloud copy (merged with this device's local) before
+        // showing progress, so a device always reflects answers made elsewhere —
+        // even when it was already signed in and didn't re-authenticate.
+        void (async () => {
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+          if (session) {
+            await syncAuthProgress({
+              access_token: session.access_token,
+              refresh_token: session.refresh_token,
+            }).catch(() => {});
+          }
+          refreshAfterGuestClear();
+        })();
       }
 
       const standalone =
@@ -190,12 +237,12 @@ export function HiraganaApp() {
 
   const currentKana = snapshot?.currentCard?.k;
   useEffect(() => {
-    // Reset the recall clock only when the visible card actually changes —
-    // not on every snapshot mutation, or a late background sync would reset
-    // the timer mid-view and record an artificially fast recall time.
-    if (!currentKana || isStartCard || isFlipped) return;
+    // Reset the recall clock when the card changes OR when the user returns to
+    // the study screen — without this, time spent on the Progress tab counts
+    // against recall quality and unfairly tanks mastery scores.
+    if (!currentKana || isStartCard || isFlipped || screen !== "study") return;
     cardShownAtRef.current = Date.now();
-  }, [currentKana, isStartCard, isFlipped]);
+  }, [currentKana, isStartCard, isFlipped, screen]);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -243,9 +290,44 @@ export function HiraganaApp() {
       if (roundBusyRef.current) return;
       roundBusyRef.current = true;
       try {
-        await drainRoundSync();
-        const data = await startRound(group);
-        applyRoundData(data, data.dotMap, data.deck, true);
+        // Build the deck on the client so the switch is instant — no blocking on
+        // a server round-trip. The deck is then registered with the server (in
+        // the background) so it stays the source of truth for scoring.
+        const deck = buildLocalDeck(group, progressWeightsRef.current);
+
+        if (!deck.length) {
+          // Unknown/empty group — fall back to a server-built round.
+          await drainRoundSync();
+          const data = await startRound(group);
+          applyRoundData(data, data.dotMap, data.deck, true);
+          return;
+        }
+
+        const roundId = makeRoundId();
+        const dotMap: DotMap = {};
+        for (const card of deck) dotMap[card.k] = "unseen";
+
+        // Chain the registration behind any prior round/answer sync so the
+        // session cookie writes never race — but do it off the UI path so the
+        // local render below is instant even on rapid back-to-back switches.
+        const registration = answerQueueRef.current
+          .catch(() => {})
+          .then(() =>
+            startRound(group, { roundId, deck: deck.map((card) => card.k) }),
+          )
+          .then(() => {})
+          .catch(() => {
+            // A failed registration self-heals: the first answer's save will
+            // miss the round server-side and trigger a refresh.
+          });
+
+        applyRoundData(
+          buildLocalSnapshot(roundId, group, deck),
+          dotMap,
+          deck,
+          true,
+          registration,
+        );
       } catch {
         showToast("Could not start round");
         inFlightAnswersRef.current.clear();
@@ -253,7 +335,7 @@ export function HiraganaApp() {
         roundBusyRef.current = false;
       }
     },
-    [applyRoundData, drainRoundSync, showToast],
+    [applyRoundData, buildLocalSnapshot, drainRoundSync, showToast],
   );
 
   const openAuthPrompt = useCallback((fromStartCard = false) => {
@@ -392,20 +474,29 @@ export function HiraganaApp() {
       const sessionTotal = snapshot.sessionTotal + 1;
       const sessionCorrect = snapshot.sessionCorrect + (correct ? 1 : 0);
       const sessionStreak = correct ? snapshot.sessionStreak + 1 : 0;
+      // Recall speed averages over correct answers only (a miss is "time to give
+      // up", not recall time). Reconstruct the running total from the prior
+      // correct count and add this answer's time only when it was correct.
+      const priorRecallTotal =
+        snapshot.avgRecall != null && snapshot.sessionCorrect > 0
+          ? snapshot.avgRecall * snapshot.sessionCorrect
+          : 0;
       const sessionRecallTotal =
-        snapshot.sessionTotal > 0 && snapshot.avgRecall != null
-          ? snapshot.avgRecall * snapshot.sessionTotal + answeredRecall
-          : answeredRecall;
+        priorRecallTotal + (correct ? answeredRecall : 0);
 
       setLocalDeck(deck);
       setSnapshot({
         ...snapshot,
         currentCard: nextCard,
         remaining: deck.length,
+        // Keep roundSize in sync: server computes it as sessionTotal + deck.length.
+        // Without this the optimistic value diverges from the server response on
+        // misses (reinserted card grows the deck), making the bar tick backward.
+        roundSize: sessionTotal + deck.length,
         sessionTotal,
         sessionCorrect,
         sessionStreak,
-        avgRecall: sessionRecallTotal / sessionTotal,
+        avgRecall: sessionCorrect > 0 ? sessionRecallTotal / sessionCorrect : null,
         roundComplete: deck.length === 0 && sessionTotal > 0,
         revealed: false,
       });
@@ -522,6 +613,7 @@ export function HiraganaApp() {
 
       const data = await resetProgress();
       setProgress(data);
+      progressWeightsRef.current = data.weights;
       setSnapshot(null);
       setLocalDeck([]);
       setDotMap({});
@@ -536,6 +628,13 @@ export function HiraganaApp() {
     !isStartCard &&
     snapshot.roundComplete &&
     snapshot.sessionTotal > 0;
+
+  useEffect(() => {
+    if (roundComplete && !prevRoundCompleteRef.current) {
+      launchConfetti(confettiRef.current);
+    }
+    prevRoundCompleteRef.current = roundComplete;
+  }, [roundComplete]);
 
   const progressPct =
     snapshot && snapshot.roundSize > 0
@@ -613,34 +712,36 @@ export function HiraganaApp() {
             </div>
           </div>
 
-          {progress?.welcome.hasProgress && (
-            <div className="welcome-return">
-              <div className="wr-item">
-                <div className="wr-val" style={{ color: "var(--sakura)" }}>
-                  {progress.welcome.mastered}
+          <div className="welcome-return-wrap">
+            {progress?.welcome.hasProgress && (
+              <div className="welcome-return">
+                <div className="wr-item">
+                  <div className="wr-val" style={{ color: "var(--sakura)" }}>
+                    {progress.welcome.mastered}
+                  </div>
+                  <div className="wr-lbl">Mastered</div>
                 </div>
-                <div className="wr-lbl">Mastered</div>
-              </div>
-              <div className="wr-item">
-                <div className="wr-val" style={{ color: "var(--green)" }}>
-                  {progress.welcome.accuracy}%
+                <div className="wr-item">
+                  <div className="wr-val" style={{ color: "var(--green)" }}>
+                    {progress.welcome.accuracy}%
+                  </div>
+                  <div className="wr-lbl">Accuracy</div>
                 </div>
-                <div className="wr-lbl">Accuracy</div>
-              </div>
-              <div className="wr-item">
-                <div className="wr-val" style={{ color: "var(--gold)" }}>
-                  {progress.welcome.bestStreak}
+                <div className="wr-item">
+                  <div className="wr-val" style={{ color: "var(--gold)" }}>
+                    {progress.welcome.bestStreak}
+                  </div>
+                  <div className="wr-lbl">Best streak</div>
                 </div>
-                <div className="wr-lbl">Best streak</div>
-              </div>
-              <div className="wr-item">
-                <div className="wr-val" style={{ color: "var(--sub)" }}>
-                  {fmtSpeed(progress.welcome.avgRecall)}
+                <div className="wr-item">
+                  <div className="wr-val" style={{ color: "var(--sub)" }}>
+                    {fmtSpeed(progress.welcome.avgRecall)}
+                  </div>
+                  <div className="wr-lbl">Avg recall</div>
                 </div>
-                <div className="wr-lbl">Avg recall</div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           <button className="welcome-start-btn" onClick={() => void handleStartStudy()}>
             Begin studying →
@@ -713,6 +814,7 @@ export function HiraganaApp() {
               romaji={romaji}
               isFlipped={isFlipped}
               isStartCard={isStartCard}
+              isActive={screen === "study"}
               recallTime={recallTime}
               roundLabel={snapshot?.group ?? activeGroup}
               roundSize={snapshot?.roundSize ?? localDeck.length}

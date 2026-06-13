@@ -9,6 +9,7 @@ type StudyCardProps = {
   romaji: string | null;
   isFlipped: boolean;
   isStartCard: boolean;
+  isActive: boolean;
   recallTime: number;
   roundLabel: string;
   roundSize: number;
@@ -29,6 +30,7 @@ export function StudyCard({
   romaji,
   isFlipped,
   isStartCard,
+  isActive,
   recallTime,
   roundLabel,
   roundSize,
@@ -72,7 +74,7 @@ export function StudyCard({
   }, [cardKey]);
 
   useEffect(() => {
-    if (isStartCard || isFlipped) {
+    if (!isActive || isStartCard || isFlipped) {
       if (timerRafRef.current) cancelAnimationFrame(timerRafRef.current);
       if (timerFillRef.current) timerFillRef.current.style.width = "0%";
       return;
@@ -99,7 +101,7 @@ export function StudyCard({
     return () => {
       if (timerRafRef.current) cancelAnimationFrame(timerRafRef.current);
     };
-  }, [cardKey, isStartCard, isFlipped]);
+  }, [cardKey, isStartCard, isFlipped, isActive]);
 
   useEffect(() => {
     const wrap = wrapRef.current;
@@ -245,7 +247,19 @@ export function StudyCard({
         ✓ got it
       </div>
 
-      <div className="card-wrap" ref={wrapRef}>
+      <div
+        className="card-wrap"
+        ref={wrapRef}
+        role="button"
+        tabIndex={0}
+        aria-label={
+          isStartCard
+            ? `Start ${roundLabel} round, ${roundSize} card${roundSize !== 1 ? "s" : ""}`
+            : isFlipped
+              ? `${kana} revealed as ${romaji ?? "unknown"}, swipe right for got it, left for miss`
+              : `Hiragana character, tap to reveal`
+        }
+      >
         <div className="card" ref={cardRef}>
           <div className="swipe-overlay" ref={overlayRef} />
           <div

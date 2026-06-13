@@ -7,7 +7,9 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
+  // Exclude API routes — they call getUser() themselves via getAuthUserId().
+  // Including them would double the auth network round-trip on every request.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

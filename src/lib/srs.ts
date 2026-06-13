@@ -1,4 +1,4 @@
-import { ALL_CARDS, type HiraganaCard } from "@/lib/hiragana";
+import { ALL_CARDS } from "@/lib/hiragana";
 import type { ProgressState } from "@/lib/progress";
 
 /**
@@ -24,153 +24,23 @@ export function recallQuality(secs: number): number {
 }
 
 /**
- * How hard a correct answer pulls mastery toward its target — eager while a card
- * is still new (few reps), fine-tuning once we have plenty of evidence.
+ * How hard a correct answer pulls mastery toward its target. Strong and slow to
+ * fade with reps, so genuine recall is rewarded fast: a single quick correct
+ * answer lifts a new card most of the way, and a card recovers convincingly
+ * after an early stumble rather than stalling at the default.
  */
 function gainRate(priorSeen: number): number {
-  return Math.min(Math.max(0.55 / (1 + 0.5 * priorSeen), 0.08), 0.55);
+  return Math.min(Math.max(0.62 / (1 + 0.2 * priorSeen), 0.12), 0.62);
 }
 
 /**
- * How hard a miss pulls mastery toward zero. Mistakes stay salient longer than
- * gains (slower decay, higher floor), but still soften as a card proves itself.
+ * How hard a miss pulls mastery toward zero. Softer than the gain so a fumble
+ * while still learning doesn't cancel out the recall that follows it, but two or
+ * three misses still drop a card into the red. Eases further as a card proves
+ * itself, so an established character survives the occasional slip.
  */
 function lossRate(priorSeen: number): number {
-  return Math.min(Math.max(0.6 / (1 + 0.25 * priorSeen), 0.16), 0.6);
-}
-
-/** True when a character should be studied before mastered ones. */
-export function isPriorityCard(
-  card: HiraganaCard,
-  progress: ProgressState,
-): boolean {
-  const seen = progress.allTimeSeen[card.k] ?? 0;
-  if (seen === 0) return true;
-
-  const score = progress.scores[card.k] ?? 4;
-  if (score < 5) return true;
-
-  const avgTime = progress.avgTimes[card.k];
-  if (avgTime != null && avgTime >= 2) return true;
-
-  return seen >= 3 && score < 6;
-}
-
-export function cardPickWeight(
-  card: HiraganaCard,
-  progress: ProgressState,
-  position = 0,
-): number {
-  const score = progress.scores[card.k] ?? 4;
-  const avgTime = progress.avgTimes[card.k];
-  const seen = progress.allTimeSeen[card.k] ?? 0;
-  const speedPenalty =
-    avgTime == null ? 0 : Math.min((avgTime - 1.5) / 6.5, 1);
-  const mastery = Math.pow(score, 1.5);
-
-  let weight = Math.max(0.04, (1 + speedPenalty * 0.6) / mastery);
-
-  if (seen === 0) {
-    weight *= 8;
-  } else {
-    if (score <= 3) weight *= 3.5;
-    else if (score < 5) weight *= 2;
-    else if (score < 6) weight *= 1.35;
-
-    if (avgTime != null) {
-      if (avgTime >= 5) weight *= 2.25;
-      else if (avgTime >= 2) weight *= 1.4;
-    }
-
-    if (seen >= 3 && score < 5) weight *= 1.5;
-  }
-
-  // Front-load priority cards at the start of each round.
-  if (position < 3 && isPriorityCard(card, progress)) {
-    weight *= 1.75;
-  }
-
-  return weight;
-}
-
-export function weightedPick(
-  cards: HiraganaCard[],
-  progress: ProgressState,
-  position = 0,
-): HiraganaCard {
-  const weights = cards.map((card) => cardPickWeight(card, progress, position));
-
-  const total = weights.reduce((sum, weight) => sum + weight, 0);
-  let roll = Math.random() * total;
-
-  for (let i = 0; i < cards.length; i++) {
-    roll -= weights[i];
-    if (roll <= 0) return cards[i];
-  }
-
-  return cards[cards.length - 1];
-}
-
-function deckCandidates(
-  cards: HiraganaCard[],
-  progress: ProgressState,
-  last: HiraganaCard | null,
-  usedInRound: Set<string>,
-  position: number,
-): HiraganaCard[] {
-  const avoidRepeat =
-    cards.length > 1 && last
-      ? cards.filter((card) => card.k !== last.k)
-      : cards;
-  const unused = avoidRepeat.filter((card) => !usedInRound.has(card.k));
-  const priorityUnused = unused.filter((card) =>
-    isPriorityCard(card, progress),
-  );
-
-  if (priorityUnused.length > 0) {
-    return priorityUnused;
-  }
-
-  if (unused.length > 0 && position < Math.ceil(avoidRepeat.length * 0.65)) {
-    return unused;
-  }
-
-  return avoidRepeat;
-}
-
-export function buildDeck(
-  cards: HiraganaCard[],
-  progress: ProgressState,
-): HiraganaCard[] {
-  const size = Math.min(Math.max(cards.length, 5), 25);
-  const round: HiraganaCard[] = [];
-  const usedInRound = new Set<string>();
-  let last: HiraganaCard | null = null;
-
-  for (let i = 0; i < size; i++) {
-    const candidates = deckCandidates(
-      cards,
-      progress,
-      last,
-      usedInRound,
-      i,
-    );
-    const picked = weightedPick(candidates, progress, i);
-    round.push({ ...picked });
-    usedInRound.add(picked.k);
-    last = picked;
-  }
-
-  return round;
-}
-
-export function shuffleDeck(deck: HiraganaCard[]): HiraganaCard[] {
-  const next = [...deck];
-  for (let i = next.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [next[i], next[j]] = [next[j], next[i]];
-  }
-  return next;
+  return Math.min(Math.max(0.42 / (1 + 0.12 * priorSeen), 0.14), 0.42);
 }
 
 export type AnswerResult = {
@@ -231,14 +101,20 @@ export function applyAnswer(
   next.scores[kana] = Math.min(MAX_SCORE, Math.max(MIN_SCORE, updated));
 
   next.totalAnswers += 1;
-  next.totalRecallTime += clampedRecall;
   next.allTimeSeen[kana] = priorSeen + 1;
 
-  const alpha = 0.3;
-  next.avgTimes[kana] =
-    next.avgTimes[kana] == null
-      ? clampedRecall
-      : next.avgTimes[kana]! * (1 - alpha) + clampedRecall * alpha;
+  // Recall *time* only counts when the answer was correct. A miss is "time to
+  // give up and flip", not "time to recall" — folding it in would show a fast
+  // speed on a card the learner clearly doesn't know, contradicting its low
+  // mastery bar. Misses leave the speed stats untouched.
+  if (correct) {
+    next.totalRecallTime += clampedRecall;
+    const alpha = 0.3;
+    next.avgTimes[kana] =
+      next.avgTimes[kana] == null
+        ? clampedRecall
+        : next.avgTimes[kana]! * (1 - alpha) + clampedRecall * alpha;
+  }
 
   return {
     progress: next,
@@ -251,15 +127,20 @@ export function applyAnswer(
 }
 
 export function countMastered(progress: ProgressState): number {
-  return Object.values(progress.scores).filter((score) => score >= 7).length;
+  // Use rounded score so the mastered tally matches the level-7 bar shown in
+  // the mastery grid, which also rounds before picking the bar colour.
+  return Object.values(progress.scores).filter((score) => Math.round(score) >= 7).length;
 }
 
 export function getMasterySummary(progress: ProgressState) {
   return ALL_CARDS.map((card) => {
-    const level = Math.min(
-      8,
-      Math.max(0, Math.round(progress.scores[card.k] ?? 4)),
-    );
+    const seen = progress.allTimeSeen[card.k] ?? 0;
+    // A character you've never studied shows an empty bar (level 0), not the
+    // default mid score — otherwise untouched cards look half-learned.
+    const level =
+      seen === 0
+        ? 0
+        : Math.min(8, Math.max(0, Math.round(progress.scores[card.k] ?? 4)));
     const avgTime = progress.avgTimes[card.k];
     return {
       k: card.k,

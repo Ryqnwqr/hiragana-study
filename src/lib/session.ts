@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { after } from "next/server";
 import {
   compressSession,
   expandLegacyOrCompact,
@@ -88,9 +89,20 @@ async function persistCloudProgress(
 }
 
 function scheduleCloudPersist(userId: string, progress: ProgressState) {
-  void persistCloudProgress(userId, progress).catch(() => {
-    // Cookie already has the latest state; cloud sync can retry on the next write.
-  });
+  const task = () =>
+    persistCloudProgress(userId, progress).catch(() => {
+      // Cookie already has the latest state; cloud sync retries on the next write.
+    });
+
+  // after() keeps the serverless function alive until the cloud write finishes —
+  // a plain fire-and-forget promise is frozen once the response is sent and the
+  // write would be silently dropped, losing progress across devices.
+  try {
+    after(task);
+  } catch {
+    // Outside a request scope (no after context) — fall back to awaiting inline.
+    void task();
+  }
 }
 
 /** Fast path for gameplay — cookie only, no cloud round-trip. */
@@ -103,7 +115,7 @@ export async function readPlaySession(): Promise<AppSession> {
  */
 export async function writePlaySession(
   session: AppSession,
-  options?: { awaitCloud?: boolean },
+  options?: { awaitCloud?: boolean; skipCloud?: boolean },
 ): Promise<void> {
   const userId = await getAuthUserId();
 
@@ -114,41 +126,14 @@ export async function writePlaySession(
 
   await writeCookieSession(session);
 
+  if (options?.skipCloud) return;
+
   if (options?.awaitCloud) {
     await persistCloudProgress(userId, session.progress);
     return;
   }
 
   scheduleCloudPersist(userId, session.progress);
-}
-
-/** Full read — merges cloud progress when signed in (for sync / initial load). */
-export async function readSession(): Promise<AppSession> {
-  const [cookieSession, userId] = await Promise.all([
-    readCookieSession(),
-    getAuthUserId(),
-  ]);
-
-  if (!userId) return cookieSession;
-
-  try {
-    const supabase = await createClient();
-    const cloudProgress = await fetchCloudProgress(supabase, userId);
-    if (cloudProgress) {
-      return {
-        progress: cloudProgress,
-        round: cookieSession.round,
-      };
-    }
-  } catch {
-    // Fall back to cookie progress if cloud read fails.
-  }
-
-  return cookieSession;
-}
-
-export async function writeSession(session: AppSession): Promise<void> {
-  await writePlaySession(session, { awaitCloud: true });
 }
 
 /** Wipe progress in the cookie and cloud (best effort). */

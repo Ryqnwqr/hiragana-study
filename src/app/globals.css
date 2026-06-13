@@ -170,6 +170,14 @@ body {
   font-weight: 500;
 }
 
+.welcome-return-wrap {
+  min-height: 68px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .welcome-return {
   display: flex;
   gap: 0;
@@ -178,6 +186,12 @@ body {
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
+  animation: wr-fadein 0.35s ease;
+}
+
+@keyframes wr-fadein {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .wr-item {
@@ -882,16 +896,20 @@ body {
 }
 
 .round-end {
-  display: none;
+  display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
   gap: 12px;
   padding: 0 24px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s ease;
 }
 
 .round-end.show {
-  display: flex;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .round-kana {
@@ -1079,6 +1097,11 @@ body {
   left: 0;
   height: 3px;
   transition: width 0.4s;
+}
+
+.mg-cell[data-lvl="0"] .mg-bar {
+  background: var(--border);
+  width: 100%;
 }
 
 .mg-cell[data-lvl="1"] .mg-bar {
@@ -1439,7 +1462,9 @@ body {
   opacity: 0;
   pointer-events: none;
   transition: all 0.2s;
-  white-space: nowrap;
+  white-space: normal;
+  text-align: center;
+  max-width: min(340px, calc(100vw - 32px));
   z-index: 300;
 }
 

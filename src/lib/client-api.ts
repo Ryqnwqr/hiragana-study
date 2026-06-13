@@ -32,6 +32,7 @@ export type ProgressResponse = {
     level: number;
     avgTime: number | null;
   }>;
+  weights: ProgressWeights;
   welcome: {
     mastered: number;
     accuracy: number | null;
@@ -39,6 +40,12 @@ export type ProgressResponse = {
     avgRecall: number | null;
     hasProgress: boolean;
   };
+};
+
+export type ProgressWeights = {
+  scores: Record<string, number>;
+  avgTimes: Record<string, number | null>;
+  allTimeSeen: Record<string, number>;
 };
 
 type DotMap = Record<string, "unseen" | "seen" | "good" | "mid" | "bad">;
@@ -90,20 +97,21 @@ export function resetProgress() {
   return request<ProgressResponse>("/api/progress", { method: "DELETE" });
 }
 
-export function startRound(group: string) {
+export function startRound(
+  group: string,
+  options?: { roundId?: string; deck?: string[] },
+) {
   return request<RoundSnapshot & { dotMap: DotMap; deck: PublicCard[] }>(
     "/api/round",
     {
-    method: "POST",
-      body: JSON.stringify({ group }),
+      method: "POST",
+      body: JSON.stringify({
+        group,
+        roundId: options?.roundId,
+        deck: options?.deck,
+      }),
     },
   );
-}
-
-export function beginRound() {
-  return request<{ snapshot: RoundSnapshot; dotMap: DotMap }>("/api/round/begin", {
-    method: "POST",
-  });
 }
 
 export function revealCard() {
