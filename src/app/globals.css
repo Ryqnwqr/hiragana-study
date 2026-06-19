@@ -44,7 +44,7 @@ body {
 
 .install-banner {
   position: fixed;
-  bottom: calc(70px + var(--safe-bottom));
+  bottom: calc(16px + var(--safe-bottom));
   left: 50%;
   transform: translateX(-50%);
   background: var(--panel);
@@ -55,6 +55,10 @@ body {
   width: 90%;
   z-index: 500;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+body.has-nav .install-banner {
+  bottom: calc(70px + var(--safe-bottom));
 }
 
 .install-banner p {
@@ -946,6 +950,8 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  /* Mirror study-header right clearance so sort dropdown never slides under auth pill. */
+  padding-right: max(60px, var(--sar));
 }
 
 .stats-screen-header h2 {
@@ -1265,7 +1271,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: max(20px, calc(20px + var(--sat))) max(20px, calc(20px + var(--sar))) 20px max(20px, calc(20px + var(--sal)));
   background: rgba(6, 8, 12, 0.72);
   backdrop-filter: blur(6px);
 }
@@ -1450,7 +1456,7 @@ body {
 
 .toast {
   position: fixed;
-  bottom: calc(72px + var(--safe-bottom));
+  bottom: calc(16px + var(--safe-bottom));
   left: 50%;
   transform: translateX(-50%) translateY(10px);
   background: var(--panel);
@@ -1466,6 +1472,10 @@ body {
   text-align: center;
   max-width: min(340px, calc(100vw - 32px));
   z-index: 300;
+}
+
+body.has-nav .toast {
+  bottom: calc(72px + var(--safe-bottom));
 }
 
 .toast.show {

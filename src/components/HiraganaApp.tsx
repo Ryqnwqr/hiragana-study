@@ -43,6 +43,10 @@ type DotMap = Record<string, "unseen" | "seen" | "good" | "mid" | "bad">;
 export function HiraganaApp() {
   const [screen, setScreen] = useState<Screen>("welcome");
   const [showNav, setShowNav] = useState(false);
+
+  useEffect(() => {
+    document.body.classList.toggle("has-nav", showNav);
+  }, [showNav]);
   const [groups, setGroups] = useState<string[]>([]);
   const [activeGroup, setActiveGroup] = useState("All");
   const [snapshot, setSnapshot] = useState<RoundSnapshot | null>(null);
@@ -222,8 +226,23 @@ export function HiraganaApp() {
     });
 
     const handleFocus = () => {
-      void enforceAuthSessionPolicy(supabase).then((didExpire) => {
-        if (didExpire) setUser(null);
+      void enforceAuthSessionPolicy(supabase).then(async (didExpire) => {
+        if (didExpire) {
+          setUser(null);
+          return;
+        }
+        // Re-pull cloud progress so a device that was idle picks up answers
+        // made on another device without needing a full page reload.
+        const {
+          data: { session: focusSession },
+        } = await supabase.auth.getSession();
+        if (focusSession) {
+          await syncAuthProgress({
+            access_token: focusSession.access_token,
+            refresh_token: focusSession.refresh_token,
+          }).catch(() => {});
+          await loadProgress().catch(() => {});
+        }
       });
     };
     window.addEventListener("focus", handleFocus);

@@ -240,13 +240,6 @@ export function StudyCard({
 
   return (
     <>
-      <div className="swipe-label left" ref={lblMissRef}>
-        ✗ miss
-      </div>
-      <div className="swipe-label right" ref={lblGotRef}>
-        ✓ got it
-      </div>
-
       <div
         className="card-wrap"
         ref={wrapRef}
@@ -292,6 +285,12 @@ export function StudyCard({
             </span>
             <span className="cs-hint">swipe either way to begin</span>
           </div>
+        </div>
+        <div className="swipe-label left" ref={lblMissRef}>
+          ✗ miss
+        </div>
+        <div className="swipe-label right" ref={lblGotRef}>
+          ✓ got it
         </div>
       </div>
     </>
