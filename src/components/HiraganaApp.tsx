@@ -389,17 +389,32 @@ export function HiraganaApp() {
 
     setUser(session.user);
 
-    void syncAuthProgress({
-      access_token: session.access_token,
-      refresh_token: session.refresh_token,
-    })
-      .then(() => loadProgress())
-      .then(() => showToast("Progress synced"))
-      .catch((err: unknown) => {
+    void (async () => {
+      try {
+        await syncAuthProgress({
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
+        });
+      } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error("[sync] auth sync failed:", msg);
-        showToast("Signed in, but sync failed");
-      });
+        // Surface the real reason so prod failures are diagnosable without
+        // log diving. The server appends the failing step (e.g. "saveCloud").
+        showToast(`Sync failed: ${msg}`);
+        return;
+      }
+
+      // Sync succeeded — refresh stats. A failure here is a separate concern
+      // and must NOT be reported as a sync failure (it isn't).
+      try {
+        await loadProgress();
+        showToast("Progress synced");
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("[sync] loadProgress after sync failed:", msg);
+        showToast("Synced — refreshing stats failed");
+      }
+    })();
   }, [loadProgress, showToast]);
 
   const dismissStartCard = useCallback(() => {
@@ -666,6 +681,16 @@ export function HiraganaApp() {
 
   const dotEntries = Object.entries(dotMap);
   const displayCard = snapshot?.currentCard;
+  // Key the card by a unique *presentation* id, not the kana value. A missed
+  // last card is reinserted at deck index 0, so the same kana can appear twice
+  // in a row; keying by kana alone makes React reuse the DOM node, skipping the
+  // per-card style reset and leaving stale swipe/opacity transforms behind (the
+  // card "disappears" or shows the previous face). sessionTotal advances on
+  // every answer, so it uniquely distinguishes consecutive presentations while
+  // staying stable across flip/reveal.
+  const cardPresentationKey = isStartCard
+    ? "start"
+    : `${displayCard?.k ?? ""}-${snapshot?.sessionTotal ?? 0}`;
 
   return (
     <>
@@ -830,8 +855,8 @@ export function HiraganaApp() {
         <div className="arena">
           {!roundComplete && displayCard && (
             <StudyCard
-              key={isStartCard ? "start" : displayCard.k}
-              cardKey={isStartCard ? "start" : displayCard.k}
+              key={cardPresentationKey}
+              cardKey={cardPresentationKey}
               kana={isStartCard ? "あ" : displayCard.k}
               group={displayCard.group}
               romaji={romaji}
