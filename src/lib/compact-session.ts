@@ -58,12 +58,14 @@ export function compressProgress(progress: ProgressState): CompactProgress {
 export function isCompactProgress(
   value: unknown,
 ): value is CompactProgress {
+  // Only `s` (scores) is required — `t` (times) and `seen` were added later
+  // and expandProgress handles their absence with ?? fallbacks.  Requiring them
+  // here caused fetchCloudProgress to return null for older cloud saves, which
+  // then caused the sync route to overwrite cloud data with an empty cookie.
   return (
     typeof value === "object" &&
     value != null &&
-    Array.isArray((value as CompactProgress).s) &&
-    Array.isArray((value as CompactProgress).t) &&
-    Array.isArray((value as CompactProgress).seen)
+    Array.isArray((value as CompactProgress).s)
   );
 }
 

@@ -7,6 +7,11 @@ import {
 } from "@/lib/compact-session";
 import type { ProgressState } from "@/lib/progress";
 
+/**
+ * Returns the user's cloud progress, or null when no row exists yet (new user).
+ * Throws if the row exists but the payload cannot be parsed — callers must not
+ * overwrite cloud data in that case (it could be a format we don't understand).
+ */
 export async function fetchCloudProgress(
   supabase: SupabaseClient,
   userId: string,
@@ -18,7 +23,13 @@ export async function fetchCloudProgress(
     .maybeSingle();
 
   if (error) throw error;
-  if (!isCompactProgress(data?.payload)) return null;
+  if (!data) return null; // No row — genuinely new user
+
+  if (!isCompactProgress(data.payload)) {
+    // Row exists but format is unrecognized — do NOT silently return null,
+    // which would cause callers to overwrite it with potentially empty data.
+    throw new Error("Cloud progress row exists but payload format is unrecognized");
+  }
 
   return expandProgress(data.payload);
 }
