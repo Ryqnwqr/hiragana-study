@@ -395,7 +395,11 @@ export function HiraganaApp() {
     })
       .then(() => loadProgress())
       .then(() => showToast("Progress synced"))
-      .catch(() => showToast("Signed in, but sync failed"));
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("[sync] auth sync failed:", msg);
+        showToast("Signed in, but sync failed");
+      });
   }, [loadProgress, showToast]);
 
   const dismissStartCard = useCallback(() => {

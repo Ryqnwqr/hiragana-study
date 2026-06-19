@@ -4,27 +4,28 @@ import { fetchCloudProgress, saveCloudProgress } from "@/lib/cloud-progress";
 import { mergeProgress } from "@/lib/merge-progress";
 import type { ProgressState } from "@/lib/progress";
 import { readCookieSession, writeCookieSession } from "@/lib/session";
-import {
-  createClientWithTokens,
-  type AuthTokens,
-} from "@/lib/supabase/authed-server";
+import { createClientWithTokens } from "@/lib/supabase/authed-server";
+import { createClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json().catch(() => ({}))) as Partial<AuthTokens>;
+    const body = (await request.json().catch(() => ({}))) as Record<string, string>;
     const tokens =
-      body.access_token && body.refresh_token
-        ? {
-            access_token: body.access_token,
-            refresh_token: body.refresh_token,
-          }
+      typeof body.access_token === "string" && typeof body.refresh_token === "string"
+        ? { access_token: body.access_token, refresh_token: body.refresh_token }
         : null;
 
-    const supabase = await createClientWithTokens(tokens);
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    // Try cookie-based auth first (fastest, no extra network call).
+    // Fall back to token-based auth if the cookies don't have a valid session
+    // — this covers the edge case where the sign-in just happened and the
+    // Supabase auth cookies haven't propagated to the server context yet.
+    let supabase = await createClient();
+    let { data: { user }, error: userError } = await supabase.auth.getUser();
+
+    if ((userError || !user) && tokens) {
+      supabase = await createClientWithTokens(tokens);
+      ({ data: { user }, error: userError } = await supabase.auth.getUser());
+    }
 
     if (userError || !user) {
       return NextResponse.json(
