@@ -93,8 +93,17 @@ export function clearGuestSession() {
   return request<{ ok: boolean }>("/api/session/clear", { method: "POST" });
 }
 
-export function resetProgress() {
-  return request<ProgressResponse>("/api/progress", { method: "DELETE" });
+export function resetProgress(tokens?: {
+  access_token: string;
+  refresh_token: string;
+}) {
+  return request<ProgressResponse>("/api/progress", {
+    method: "DELETE",
+    // Tokens let the route authenticate the cloud reset even when API-route
+    // cookie auth isn't available (production) — otherwise the cloud row
+    // survives the reset and gets merged back on the next sync.
+    body: JSON.stringify(tokens ?? {}),
+  });
 }
 
 export function startRound(

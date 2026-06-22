@@ -1444,6 +1444,52 @@ body.has-nav .install-banner {
   color: var(--text);
 }
 
+.confirm-modal {
+  text-align: center;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.confirm-actions button {
+  flex: 1;
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-family: "Inter", sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.confirm-cancel {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+
+.confirm-cancel:active {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.confirm-go {
+  border: 1px solid rgba(224, 107, 139, 0.45);
+  background: rgba(224, 107, 139, 0.16);
+  color: var(--sakura);
+}
+
+.confirm-go.danger {
+  border-color: rgba(224, 88, 88, 0.5);
+  background: rgba(224, 88, 88, 0.16);
+  color: var(--red);
+}
+
+.confirm-go:active {
+  filter: brightness(1.2);
+}
+
 @keyframes fbad {
   0% {
     background: radial-gradient(ellipse, rgba(224, 88, 88, 0.18), transparent 70%);

@@ -4,6 +4,7 @@ import type { User } from "@supabase/supabase-js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AuthHeaderButton } from "@/components/AuthHeaderButton";
 import { AuthPrompt } from "@/components/AuthPrompt";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { StudyCard } from "@/components/StudyCard";
 import {
   clearGuestSession,
@@ -66,6 +67,7 @@ export function HiraganaApp() {
   const [user, setUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [showAuthPrompt, setShowAuthPrompt] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const sortedMastery = useMemo(
     () => sortMasteryCells(progress?.mastery ?? [], masterySort),
@@ -641,15 +643,28 @@ export function HiraganaApp() {
     void runRound(group);
   };
 
-  const handleReset = async () => {
-    if (!confirm("Reset all progress? This cannot be undone.")) return;
+  const confirmReset = async () => {
+    setShowResetConfirm(false);
 
     try {
       // Let in-flight reveal/answer syncs finish so they don't undo the reset.
       await drainRoundSync();
       activeRoundIdRef.current = null;
 
-      const data = await resetProgress();
+      // Pass the auth tokens so the server can clear the *cloud* copy too — a
+      // cookie-only reset leaves the cloud row to be merged back on next sync.
+      const supabase = createClient();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const data = await resetProgress(
+        session
+          ? {
+              access_token: session.access_token,
+              refresh_token: session.refresh_token,
+            }
+          : undefined,
+      );
       setProgress(data);
       progressWeightsRef.current = data.weights;
       setSnapshot(null);
@@ -707,6 +722,17 @@ export function HiraganaApp() {
 
       {showAuthPrompt && (
         <AuthPrompt onDismiss={dismissAuthPrompt} onSuccess={handleAuthSuccess} />
+      )}
+
+      {showResetConfirm && (
+        <ConfirmDialog
+          title="Reset all progress?"
+          message="This clears every character's mastery, streaks, and history. This cannot be undone."
+          confirmLabel="Reset everything"
+          destructive
+          onConfirm={() => void confirmReset()}
+          onCancel={() => setShowResetConfirm(false)}
+        />
       )}
 
       {showBanner && (
@@ -1008,7 +1034,7 @@ export function HiraganaApp() {
             );
           })}
         </div>
-        <button className="reset-btn" onClick={() => void handleReset()}>
+        <button className="reset-btn" onClick={() => setShowResetConfirm(true)}>
           Reset all progress
         </button>
       </div>
