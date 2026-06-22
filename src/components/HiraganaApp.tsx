@@ -6,12 +6,14 @@ import { AuthHeaderButton } from "@/components/AuthHeaderButton";
 import { AuthPrompt } from "@/components/AuthPrompt";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { StudyCard } from "@/components/StudyCard";
+import { SyllabarySwitch } from "@/components/SyllabarySwitch";
 import {
   clearGuestSession,
   fetchGroups,
   fetchProgress,
   resetProgress,
   revealCard,
+  setSyllabaryMode as syncSyllabaryMode,
   startRound,
   submitAnswer,
   syncAuthProgress,
@@ -19,6 +21,7 @@ import {
   type ProgressWeights,
   type PublicCard,
   type RoundSnapshot,
+  type SyllabaryMode,
 } from "@/lib/client-api";
 import { buildLocalDeck, makeRoundId } from "@/lib/client-deck";
 import {
@@ -30,6 +33,7 @@ import { createClient } from "@/lib/supabase/client";
 import { launchConfetti } from "@/lib/confetti";
 import { fmtSpeed, roundMessage } from "@/lib/format";
 import { lookupRomaji } from "@/lib/romaji-lookup";
+import { getAllCards, modeLabel } from "@/lib/syllabary";
 import { isPhoneDevice } from "@/lib/device";
 import { advancePublicDeck } from "@/lib/deck-advance";
 import {
@@ -68,6 +72,8 @@ export function HiraganaApp() {
   const [authChecked, setAuthChecked] = useState(false);
   const [showAuthPrompt, setShowAuthPrompt] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [syllabaryMode, setSyllabaryMode] = useState<SyllabaryMode>("hiragana");
+  const [modeBusy, setModeBusy] = useState(false);
 
   const sortedMastery = useMemo(
     () => sortMasteryCells(progress?.mastery ?? [], masterySort),
@@ -88,10 +94,12 @@ export function HiraganaApp() {
   const roundBusyRef = useRef(false);
   const progressWeightsRef = useRef<ProgressWeights | null>(null);
   const prevRoundCompleteRef = useRef(false);
+  const modeBusyRef = useRef(false);
 
   const loadProgress = useCallback(async () => {
     const data = await fetchProgress();
     setProgress(data);
+    setSyllabaryMode(data.mode);
     progressWeightsRef.current = data.weights;
     return data;
   }, []);
@@ -131,8 +139,8 @@ export function HiraganaApp() {
   const buildLocalSnapshot = useCallback(
     (roundId: string, group: string, deck: PublicCard[]): RoundSnapshot => {
       const scores = progressWeightsRef.current?.scores ?? {};
-      const masteredCount = Object.values(scores).filter(
-        (score) => score >= 7,
+      const masteredCount = getAllCards(syllabaryMode).filter(
+        (card) => Math.round(scores[card.k] ?? 4) >= 7,
       ).length;
       return {
         roundId,
@@ -148,9 +156,10 @@ export function HiraganaApp() {
         awaitingStart: true,
         revealed: false,
         roundComplete: false,
+        mode: syllabaryMode,
       };
     },
-    [],
+    [syllabaryMode],
   );
 
   const drainRoundSync = useCallback(async () => {
@@ -178,7 +187,10 @@ export function HiraganaApp() {
       setAuthChecked(true);
 
       void fetchGroups()
-        .then(({ groups: groupNames }) => setGroups(groupNames))
+        .then(({ groups: groupNames, mode }) => {
+          setGroups(groupNames);
+          setSyllabaryMode(mode);
+        })
         .catch(() => setGroups([]));
 
       const refreshAfterGuestClear = () => {
@@ -314,7 +326,7 @@ export function HiraganaApp() {
         // Build the deck on the client so the switch is instant — no blocking on
         // a server round-trip. The deck is then registered with the server (in
         // the background) so it stays the source of truth for scoring.
-        const deck = buildLocalDeck(group, progressWeightsRef.current);
+        const deck = buildLocalDeck(group, progressWeightsRef.current, syllabaryMode);
 
         if (!deck.length) {
           // Unknown/empty group — fall back to a server-built round.
@@ -356,7 +368,7 @@ export function HiraganaApp() {
         roundBusyRef.current = false;
       }
     },
-    [applyRoundData, buildLocalSnapshot, drainRoundSync, showToast],
+    [applyRoundData, buildLocalSnapshot, drainRoundSync, showToast, syllabaryMode],
   );
 
   const openAuthPrompt = useCallback((fromStartCard = false) => {
@@ -453,7 +465,7 @@ export function HiraganaApp() {
     if (!snapshot?.currentCard || isFlipped || isStartCard) return;
 
     const kana = snapshot.currentCard.k;
-    const localRomaji = lookupRomaji(kana);
+    const localRomaji = lookupRomaji(kana, syllabaryMode);
     if (!localRomaji) {
       showToast("Unknown character");
       return;
@@ -492,7 +504,7 @@ export function HiraganaApp() {
       .catch(() => {
         // Local romaji is already shown; answer API will auto-reveal if needed.
       });
-  }, [isFlipped, isStartCard, showToast, snapshot]);
+  }, [isFlipped, isStartCard, showToast, snapshot, syllabaryMode]);
 
   const handleAnswer = useCallback(
     (correct: boolean) => {
@@ -643,6 +655,41 @@ export function HiraganaApp() {
     void runRound(group);
   };
 
+  const handleModeChange = useCallback(
+    async (nextMode: SyllabaryMode) => {
+      if (nextMode === syllabaryMode || modeBusyRef.current) return;
+      modeBusyRef.current = true;
+      setModeBusy(true);
+      try {
+        await drainRoundSync();
+        const data = await syncSyllabaryMode(nextMode);
+        setSyllabaryMode(data.mode);
+        setGroups(data.groups);
+        setProgress(data);
+        progressWeightsRef.current = data.weights;
+        setActiveGroup("All");
+        setSnapshot(null);
+        setLocalDeck([]);
+        setDotMap({});
+        setIsStartCard(false);
+        setIsFlipped(false);
+        setRomaji(null);
+        if (screen === "study") {
+          await runRound("All");
+        }
+      } catch {
+        showToast("Could not switch script");
+      } finally {
+        modeBusyRef.current = false;
+        setModeBusy(false);
+      }
+    },
+    [drainRoundSync, runRound, screen, showToast, syllabaryMode],
+  );
+
+  const welcomeSample =
+    syllabaryMode === "hiragana" ? "あいうえお" : "アイウエオ";
+
   const confirmReset = async () => {
     setShowResetConfirm(false);
 
@@ -757,10 +804,16 @@ export function HiraganaApp() {
       <div className={`screen welcome-screen ${screen === "welcome" ? "active" : ""}`}>
         <div className="welcome-inner">
           <AppMark size={72} />
-          <div className="welcome-logo">ひらがな</div>
-          <div className="welcome-chars">あいうえお</div>
+          <div className="welcome-logo">{modeLabel(syllabaryMode)}</div>
+          <SyllabarySwitch
+            mode={syllabaryMode}
+            onChange={(mode) => void handleModeChange(mode)}
+            disabled={modeBusy}
+          />
+          <div className="welcome-chars">{welcomeSample}</div>
           <div className="welcome-tagline">
-            Master hiragana with spaced repetition and smart marking.
+            Master {syllabaryMode === "hiragana" ? "hiragana" : "katakana"} with
+            spaced repetition and smart marking.
             <br />
             Your speed, consistency, and history shape every character&apos;s
             mastery.
@@ -827,8 +880,16 @@ export function HiraganaApp() {
         <div className="study-header">
           <div className="logo">
             <AppMark size={32} />
-            <span>ひらがな</span>
+            <span>{modeLabel(syllabaryMode)}</span>
           </div>
+        </div>
+
+        <div className="study-mode-bar">
+          <SyllabarySwitch
+            mode={syllabaryMode}
+            onChange={(mode) => void handleModeChange(mode)}
+            disabled={modeBusy}
+          />
         </div>
 
         <div

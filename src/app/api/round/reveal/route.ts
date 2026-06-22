@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { getRomaji } from "@/lib/hiragana";
+
 import { buildRoundSnapshot, revealCurrentCard } from "@/lib/round-service";
 import { readPlaySession, writePlaySession } from "@/lib/session";
+import { getRomaji } from "@/lib/syllabary";
 
 export async function POST() {
   const session = await readPlaySession();
@@ -15,7 +16,7 @@ export async function POST() {
 
   try {
     if (round.revealed) {
-      const romaji = getRomaji(kana);
+      const romaji = getRomaji(kana, session.mode);
       if (!romaji) {
         return NextResponse.json({ error: "Unknown character" }, { status: 400 });
       }

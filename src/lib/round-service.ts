@@ -1,13 +1,19 @@
 import { randomUUID } from "crypto";
+import { getReinsertIndex } from "@/lib/deck-advance";
+import { buildDeck } from "@/lib/deck-build";
+import {
+  getSessionProgress,
+  type ActiveRound,
+  type AppSession,
+  type ProgressState,
+} from "@/lib/progress";
 import {
   ALL_GROUP,
   getCardsForGroup,
   getRomaji,
-} from "@/lib/hiragana";
-import { getReinsertIndex } from "@/lib/deck-advance";
-import { buildDeck } from "@/lib/deck-build";
-import type { ActiveRound, AppSession } from "@/lib/progress";
-import { applyAnswer } from "@/lib/srs";
+  type SyllabaryMode,
+} from "@/lib/syllabary";
+import { applyAnswer, countMastered } from "@/lib/srs";
 
 export type PublicCard = {
   k: string;
@@ -28,24 +34,45 @@ export type RoundSnapshot = {
   awaitingStart: boolean;
   revealed: boolean;
   roundComplete: boolean;
+  mode: SyllabaryMode;
 };
 
-function currentCardFromRound(round: ActiveRound): PublicCard | null {
+function withModeProgress(
+  session: AppSession,
+  progress: ProgressState,
+): AppSession {
+  return {
+    ...session,
+    progress: {
+      ...session.progress,
+      [session.mode]: progress,
+    },
+  };
+}
+
+function currentCardFromRound(
+  round: ActiveRound,
+  mode: SyllabaryMode,
+): PublicCard | null {
   if (!round.deck.length) return null;
-  return publicCardFromKana(round.deck[0], round.group);
+  return publicCardFromKana(round.deck[0], round.group, mode);
 }
 
 export function publicCardFromKana(
   kana: string,
   group: string,
+  mode: SyllabaryMode,
 ): PublicCard {
-  const cards = getCardsForGroup(group);
+  const cards = getCardsForGroup(group, mode);
   const match = cards.find((card) => card.k === kana);
   return match ? { k: match.k, group: match.group } : { k: kana, group };
 }
 
-export function deckToPublicCards(round: ActiveRound): PublicCard[] {
-  return round.deck.map((kana) => publicCardFromKana(kana, round.group));
+export function deckToPublicCards(
+  round: ActiveRound,
+  mode: SyllabaryMode,
+): PublicCard[] {
+  return round.deck.map((kana) => publicCardFromKana(kana, round.group, mode));
 }
 
 export function buildRoundSnapshot(
@@ -57,6 +84,7 @@ export function buildRoundSnapshot(
     throw new Error("No active round");
   }
 
+  const progress = getSessionProgress(session);
   const roundSize = round.sessionTotal + round.deck.length;
   const remaining = round.deck.length;
 
@@ -72,23 +100,25 @@ export function buildRoundSnapshot(
       round.sessionCorrect > 0
         ? round.sessionRecallTotal / round.sessionCorrect
         : null,
-    masteredCount: Object.values(session.progress.scores).filter(
-      (score) => score >= 7,
-    ).length,
-    currentCard: round.deck.length ? currentCardFromRound(round) : null,
+    masteredCount: countMastered(progress, session.mode),
+    currentCard: round.deck.length
+      ? currentCardFromRound(round, session.mode)
+      : null,
     awaitingStart,
     revealed: round.revealed,
-    roundComplete: !round.deck.length && round.sessionTotal > 0 && !awaitingStart,
+    roundComplete:
+      !round.deck.length && round.sessionTotal > 0 && !awaitingStart,
+    mode: session.mode,
   };
 }
 
 export function startRound(session: AppSession, group: string): AppSession {
-  const cards = getCardsForGroup(group);
+  const cards = getCardsForGroup(group, session.mode);
   if (!cards.length) {
     throw new Error("Unknown group");
   }
 
-  const deck = buildDeck(cards, session.progress);
+  const deck = buildDeck(cards, getSessionProgress(session));
   return seedRound(
     session,
     group,
@@ -96,18 +126,15 @@ export function startRound(session: AppSession, group: string): AppSession {
   );
 }
 
-/**
- * Register a deck the client already built (for instant category switches).
- * Falls back to a server-built deck if the client's is empty/invalid, and
- * sanitises the kana so a tampered client can't inject unknown characters.
- */
 export function startRoundWithDeck(
   session: AppSession,
   group: string,
   roundId: string | undefined,
   deckKanas: string[],
 ): AppSession {
-  const valid = new Set(getCardsForGroup(group).map((card) => card.k));
+  const valid = new Set(
+    getCardsForGroup(group, session.mode).map((card) => card.k),
+  );
   const deck = deckKanas.filter((kana) => valid.has(kana)).slice(0, 25);
 
   if (!deck.length) return startRound(session, group);
@@ -150,7 +177,7 @@ export function revealCurrentCard(session: AppSession): {
   }
 
   const kana = round.deck[0];
-  const romaji = getRomaji(kana);
+  const romaji = getRomaji(kana, session.mode);
   if (!romaji) throw new Error("Unknown character");
 
   const dotMap = { ...round.dotMap };
@@ -185,7 +212,6 @@ export function submitAnswer(
     throw new Error("No active card");
   }
 
-  // Server deck order is authoritative — client kana is only a hint.
   const actualKana = round.deck[0];
 
   if (!round.revealed) {
@@ -195,7 +221,7 @@ export function submitAnswer(
   const activeRound = workingSession.round!;
 
   const result = applyAnswer(
-    workingSession.progress,
+    getSessionProgress(workingSession),
     actualKana,
     correct,
     recallTime,
@@ -219,7 +245,7 @@ export function submitAnswer(
 
   return {
     session: {
-      progress: result.progress,
+      ...withModeProgress(workingSession, result.progress),
       round: {
         ...activeRound,
         deck,
@@ -227,7 +253,6 @@ export function submitAnswer(
         sessionStreak: result.sessionStreak,
         sessionCorrect: result.sessionCorrect,
         sessionTotal: activeRound.sessionTotal + 1,
-        // Only correct answers contribute to the recall-speed average.
         sessionRecallTotal:
           activeRound.sessionRecallTotal +
           (correct ? Math.min(Math.max(recallTime, 0), 60) : 0),
@@ -238,4 +263,3 @@ export function submitAnswer(
     confetti,
   };
 }
-

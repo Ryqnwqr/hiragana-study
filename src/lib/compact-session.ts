@@ -1,13 +1,13 @@
-import { ALL_CARDS } from "@/lib/hiragana";
+import { getAllCards, type SyllabaryMode } from "@/lib/syllabary";
 import {
   createDefaultProgress,
   normalizeProgress,
   type ActiveRound,
   type AppSession,
+  type DualProgress,
   type ProgressState,
 } from "@/lib/progress";
-
-const KANA_TO_INDEX = new Map(ALL_CARDS.map((card, index) => [card.k, index]));
+import { compactMode, expandCompactMode } from "@/lib/syllabary";
 
 export type CompactProgress = {
   s: number[];
@@ -32,36 +32,50 @@ type CompactRound = {
 };
 
 export type CompactSessionPayload = {
-  p: CompactProgress;
+  m?: "h" | "k";
+  ph: CompactProgress;
+  pk?: CompactProgress;
   r: CompactRound | null;
+  /** @deprecated Legacy single-script payload */
+  p?: CompactProgress;
 };
 
-function defaultCompactProgress(): CompactProgress {
-  const base = createDefaultProgress();
-  return compressProgress(base);
+export type CloudProgressPayload = {
+  ph: CompactProgress;
+  pk?: CompactProgress;
+  /** @deprecated Legacy hiragana-only payload */
+  s?: number[];
+};
+
+function kanaIndexMap(mode: SyllabaryMode) {
+  return new Map(getAllCards(mode).map((card, index) => [card.k, index]));
 }
 
-export function compressProgress(progress: ProgressState): CompactProgress {
-  const normalized = normalizeProgress(progress);
+function defaultCompactProgress(mode: SyllabaryMode): CompactProgress {
+  return compressProgressForMode(createDefaultProgress(mode), mode);
+}
+
+export function compressProgressForMode(
+  progress: ProgressState,
+  mode: SyllabaryMode,
+): CompactProgress {
+  const normalized = normalizeProgress(progress, mode);
+  const cards = getAllCards(mode);
 
   return {
-    s: ALL_CARDS.map((card) => normalized.scores[card.k] ?? 4),
-    t: ALL_CARDS.map((card) => normalized.avgTimes[card.k] ?? null),
+    s: cards.map((card) => normalized.scores[card.k] ?? 4),
+    t: cards.map((card) => normalized.avgTimes[card.k] ?? null),
     ta: normalized.totalAnswers,
     tc: normalized.totalCorrect,
     bs: normalized.bestStreak,
     trt: normalized.totalRecallTime,
-    seen: ALL_CARDS.map((card) => normalized.allTimeSeen[card.k] ?? 0),
+    seen: cards.map((card) => normalized.allTimeSeen[card.k] ?? 0),
   };
 }
 
 export function isCompactProgress(
   value: unknown,
 ): value is CompactProgress {
-  // Only `s` (scores) is required — `t` (times) and `seen` were added later
-  // and expandProgress handles their absence with ?? fallbacks.  Requiring them
-  // here caused fetchCloudProgress to return null for older cloud saves, which
-  // then caused the sync route to overwrite cloud data with an empty cookie.
   return (
     typeof value === "object" &&
     value != null &&
@@ -69,7 +83,20 @@ export function isCompactProgress(
   );
 }
 
-export function expandProgress(compact: CompactProgress): ProgressState {
+export function isCloudProgressPayload(
+  value: unknown,
+): value is CloudProgressPayload {
+  if (typeof value !== "object" || value == null) return false;
+  if ("ph" in value) {
+    return isCompactProgress((value as CloudProgressPayload).ph);
+  }
+  return isCompactProgress(value);
+}
+
+export function expandProgressForMode(
+  compact: CompactProgress,
+  mode: SyllabaryMode,
+): ProgressState {
   const scores: Record<string, number> = {};
   const avgTimes: Record<string, number | null> = {};
   const allTimeSeen: Record<string, number> = {};
@@ -77,27 +104,68 @@ export function expandProgress(compact: CompactProgress): ProgressState {
   const timeList = compact.t ?? [];
   const seenList = compact.seen ?? [];
 
-  ALL_CARDS.forEach((card, index) => {
+  getAllCards(mode).forEach((card, index) => {
     scores[card.k] = scoreList[index] ?? 4;
     avgTimes[card.k] = timeList[index] ?? null;
     if (seenList[index]) allTimeSeen[card.k] = seenList[index];
   });
 
-  return normalizeProgress({
-    scores,
-    avgTimes,
-    totalAnswers: compact.ta ?? 0,
-    totalCorrect: compact.tc ?? 0,
-    bestStreak: compact.bs ?? 0,
-    allTimeSeen,
-    totalRecallTime: compact.trt ?? 0,
-  });
+  return normalizeProgress(
+    {
+      scores,
+      avgTimes,
+      totalAnswers: compact.ta ?? 0,
+      totalCorrect: compact.tc ?? 0,
+      bestStreak: compact.bs ?? 0,
+      allTimeSeen,
+      totalRecallTime: compact.trt ?? 0,
+    },
+    mode,
+  );
 }
 
-export function compressRound(round: ActiveRound): CompactRound {
+/** @deprecated Use compressProgressForMode */
+export function compressProgress(progress: ProgressState): CompactProgress {
+  return compressProgressForMode(progress, "hiragana");
+}
+
+/** @deprecated Use expandProgressForMode */
+export function expandProgress(compact: CompactProgress): ProgressState {
+  return expandProgressForMode(compact, "hiragana");
+}
+
+export function compressDualProgress(progress: DualProgress): CloudProgressPayload {
+  return {
+    ph: compressProgressForMode(progress.hiragana, "hiragana"),
+    pk: compressProgressForMode(progress.katakana, "katakana"),
+  };
+}
+
+export function expandDualProgress(payload: CloudProgressPayload): DualProgress {
+  const hiraganaCompact = payload.ph ?? (isCompactProgress(payload) ? payload : null);
+  if (!hiraganaCompact) {
+    return {
+      hiragana: createDefaultProgress("hiragana"),
+      katakana: createDefaultProgress("katakana"),
+    };
+  }
+
+  return {
+    hiragana: expandProgressForMode(hiraganaCompact, "hiragana"),
+    katakana: payload.pk
+      ? expandProgressForMode(payload.pk, "katakana")
+      : createDefaultProgress("katakana"),
+  };
+}
+
+export function compressRound(
+  round: ActiveRound,
+  mode: SyllabaryMode,
+): CompactRound {
+  const indexMap = kanaIndexMap(mode);
   const dm: CompactRound["dm"] = {};
   for (const [kana, status] of Object.entries(round.dotMap)) {
-    const index = KANA_TO_INDEX.get(kana);
+    const index = indexMap.get(kana);
     if (index != null) dm[String(index)] = status;
   }
 
@@ -105,7 +173,7 @@ export function compressRound(round: ActiveRound): CompactRound {
     id: round.id,
     g: round.group,
     d: round.deck
-      .map((kana) => KANA_TO_INDEX.get(kana))
+      .map((kana) => indexMap.get(kana))
       .filter((index): index is number => index != null),
     rv: round.revealed ? 1 : 0,
     ss: round.sessionStreak,
@@ -116,17 +184,21 @@ export function compressRound(round: ActiveRound): CompactRound {
   };
 }
 
-export function expandRound(compact: CompactRound): ActiveRound {
+export function expandRound(
+  compact: CompactRound,
+  mode: SyllabaryMode,
+): ActiveRound {
+  const cards = getAllCards(mode);
   const dotMap: ActiveRound["dotMap"] = {};
   for (const [index, status] of Object.entries(compact.dm)) {
-    const card = ALL_CARDS[Number(index)];
+    const card = cards[Number(index)];
     if (card) dotMap[card.k] = status;
   }
 
   return {
     id: compact.id,
     group: compact.g,
-    deck: compact.d.map((index) => ALL_CARDS[index]?.k).filter(Boolean) as string[],
+    deck: compact.d.map((index) => cards[index]?.k).filter(Boolean) as string[],
     revealed: compact.rv === 1,
     sessionStreak: compact.ss,
     sessionCorrect: compact.sc,
@@ -138,26 +210,44 @@ export function expandRound(compact: CompactRound): ActiveRound {
 
 export function compressSession(session: AppSession): CompactSessionPayload {
   return {
-    p: compressProgress(session.progress),
-    r: session.round ? compressRound(session.round) : null,
+    m: compactMode(session.mode),
+    ph: compressProgressForMode(session.progress.hiragana, "hiragana"),
+    pk: compressProgressForMode(session.progress.katakana, "katakana"),
+    r: session.round ? compressRound(session.round, session.mode) : null,
   };
 }
 
 export function expandSession(payload: CompactSessionPayload): AppSession {
+  const mode = expandCompactMode(payload.m);
+  const hiraganaSource = payload.ph ?? payload.p ?? defaultCompactProgress("hiragana");
+
   return {
-    progress: expandProgress(payload.p ?? defaultCompactProgress()),
-    round: payload.r ? expandRound(payload.r) : null,
+    mode,
+    progress: {
+      hiragana: expandProgressForMode(hiraganaSource, "hiragana"),
+      katakana: payload.pk
+        ? expandProgressForMode(payload.pk, "katakana")
+        : createDefaultProgress("katakana"),
+    },
+    round: payload.r ? expandRound(payload.r, mode) : null,
   };
 }
 
 /** Supports legacy JWT payloads that stored full progress/round objects. */
 export function expandLegacyOrCompact(payload: Record<string, unknown>): AppSession {
-  if (payload.p && payload.r !== undefined) {
+  if (payload.ph || payload.p || (payload.r !== undefined && payload.m !== undefined)) {
     return expandSession(payload as CompactSessionPayload);
   }
 
+  const legacyProgress = payload.progress as ProgressState | undefined;
   return {
-    progress: normalizeProgress(payload.progress as ProgressState),
+    mode: "hiragana",
+    progress: {
+      hiragana: legacyProgress
+        ? normalizeProgress(legacyProgress, "hiragana")
+        : createDefaultProgress("hiragana"),
+      katakana: createDefaultProgress("katakana"),
+    },
     round: (payload.round as ActiveRound | null) ?? null,
   };
 }

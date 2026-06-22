@@ -3,6 +3,8 @@ export type PublicCard = {
   group: string;
 };
 
+export type SyllabaryMode = "hiragana" | "katakana";
+
 export type RoundSnapshot = {
   roundId: string;
   group: string;
@@ -17,9 +19,11 @@ export type RoundSnapshot = {
   awaitingStart: boolean;
   revealed: boolean;
   roundComplete: boolean;
+  mode: SyllabaryMode;
 };
 
 export type ProgressResponse = {
+  mode: SyllabaryMode;
   totalAnswers: number;
   accuracy: number | null;
   bestStreak: number;
@@ -72,11 +76,18 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export function fetchGroups() {
-  return request<{ groups: string[] }>("/api/groups");
+  return request<{ groups: string[]; mode: SyllabaryMode }>("/api/groups");
 }
 
 export function fetchProgress() {
   return request<ProgressResponse>("/api/progress");
+}
+
+export function setSyllabaryMode(mode: SyllabaryMode) {
+  return request<ProgressResponse & { groups: string[] }>("/api/mode", {
+    method: "POST",
+    body: JSON.stringify({ mode }),
+  });
 }
 
 export function syncAuthProgress(tokens: {

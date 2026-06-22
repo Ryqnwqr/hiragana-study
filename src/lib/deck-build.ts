@@ -1,4 +1,4 @@
-import type { HiraganaCard } from "@/lib/hiragana";
+import type { KanaCard } from "@/lib/syllabary";
 import type { ProgressState } from "@/lib/progress";
 
 /**
@@ -10,7 +10,7 @@ import type { ProgressState } from "@/lib/progress";
 
 /** True when a character should be studied before mastered ones. */
 export function isPriorityCard(
-  card: HiraganaCard,
+  card: KanaCard,
   progress: ProgressState,
 ): boolean {
   const seen = progress.allTimeSeen[card.k] ?? 0;
@@ -26,7 +26,7 @@ export function isPriorityCard(
 }
 
 export function cardPickWeight(
-  card: HiraganaCard,
+  card: KanaCard,
   progress: ProgressState,
   position = 0,
 ): number {
@@ -63,10 +63,10 @@ export function cardPickWeight(
 }
 
 export function weightedPick(
-  cards: HiraganaCard[],
+  cards: KanaCard[],
   progress: ProgressState,
   position = 0,
-): HiraganaCard {
+): KanaCard {
   const weights = cards.map((card) => cardPickWeight(card, progress, position));
 
   const total = weights.reduce((sum, weight) => sum + weight, 0);
@@ -81,12 +81,12 @@ export function weightedPick(
 }
 
 function deckCandidates(
-  cards: HiraganaCard[],
+  cards: KanaCard[],
   progress: ProgressState,
-  last: HiraganaCard | null,
+  last: KanaCard | null,
   usedInRound: Set<string>,
   position: number,
-): HiraganaCard[] {
+): KanaCard[] {
   const avoidRepeat =
     cards.length > 1 && last
       ? cards.filter((card) => card.k !== last.k)
@@ -108,13 +108,13 @@ function deckCandidates(
 }
 
 export function buildDeck(
-  cards: HiraganaCard[],
+  cards: KanaCard[],
   progress: ProgressState,
-): HiraganaCard[] {
+): KanaCard[] {
   const size = Math.min(Math.max(cards.length, 5), 25);
-  const round: HiraganaCard[] = [];
+  const round: KanaCard[] = [];
   const usedInRound = new Set<string>();
-  let last: HiraganaCard | null = null;
+  let last: KanaCard | null = null;
 
   for (let i = 0; i < size; i++) {
     const candidates = deckCandidates(cards, progress, last, usedInRound, i);
@@ -127,7 +127,7 @@ export function buildDeck(
   return round;
 }
 
-export function shuffleDeck(deck: HiraganaCard[]): HiraganaCard[] {
+export function shuffleDeck(deck: KanaCard[]): KanaCard[] {
   const next = [...deck];
   for (let i = next.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));

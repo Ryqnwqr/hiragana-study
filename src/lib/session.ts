@@ -9,7 +9,7 @@ import { saveCloudProgress } from "@/lib/cloud-progress";
 import {
   createDefaultSession,
   type AppSession,
-  type ProgressState,
+  type DualProgress,
 } from "@/lib/progress";
 import { createClient } from "@/lib/supabase/server";
 
@@ -81,13 +81,13 @@ export async function writeCookieSession(
 
 async function persistCloudProgress(
   userId: string,
-  progress: ProgressState,
+  progress: DualProgress,
 ): Promise<void> {
   const supabase = await createClient();
   await saveCloudProgress(supabase, userId, progress);
 }
 
-function scheduleCloudPersist(userId: string, progress: ProgressState) {
+function scheduleCloudPersist(userId: string, progress: DualProgress) {
   const task = () =>
     persistCloudProgress(userId, progress).catch(() => {
       // Cookie already has the latest state; cloud sync retries on the next write.

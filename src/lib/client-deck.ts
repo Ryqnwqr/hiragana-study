@@ -1,7 +1,7 @@
 import type { PublicCard, ProgressWeights } from "@/lib/client-api";
 import { buildDeck } from "@/lib/deck-build";
-import { getCardsForGroup } from "@/lib/hiragana";
 import { createDefaultProgress, type ProgressState } from "@/lib/progress";
+import { getCardsForGroup, type SyllabaryMode } from "@/lib/syllabary";
 
 /**
  * Build a round's deck on the client so switching categories is instant. Uses
@@ -11,11 +11,12 @@ import { createDefaultProgress, type ProgressState } from "@/lib/progress";
 export function buildLocalDeck(
   group: string,
   weights: ProgressWeights | null,
+  mode: SyllabaryMode,
 ): PublicCard[] {
-  const cards = getCardsForGroup(group);
+  const cards = getCardsForGroup(group, mode);
   if (!cards.length) return [];
 
-  const base = createDefaultProgress();
+  const base = createDefaultProgress(mode);
   const progress: ProgressState = weights
     ? {
         ...base,

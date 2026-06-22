@@ -33,6 +33,6 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ...buildRoundSnapshot(nextSession, true),
     dotMap: round.dotMap,
-    deck: deckToPublicCards(round),
+    deck: deckToPublicCards(round, nextSession.mode),
   });
 }

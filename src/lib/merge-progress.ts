@@ -1,17 +1,20 @@
-import { ALL_CARDS } from "@/lib/hiragana";
+import { getAllCards, type SyllabaryMode } from "@/lib/syllabary";
 import {
+  createDefaultDualProgress,
   createDefaultProgress,
   normalizeProgress,
+  type DualProgress,
   type ProgressState,
 } from "@/lib/progress";
 
 export function mergeProgress(
   local: ProgressState,
   remote: ProgressState,
+  mode: SyllabaryMode,
 ): ProgressState {
-  const merged = createDefaultProgress();
+  const merged = createDefaultProgress(mode);
 
-  for (const card of ALL_CARDS) {
+  for (const card of getAllCards(mode)) {
     const kana = card.k;
 
     const localSeen = local.allTimeSeen[kana] ?? 0;
@@ -19,10 +22,6 @@ export function mergeProgress(
     const totalSeen = Math.max(localSeen, remoteSeen);
     if (totalSeen > 0) merged.allTimeSeen[kana] = totalSeen;
 
-    // The device with more reps for this card has the most up-to-date score.
-    // Using Math.max ignores misses from other devices; higher-seen wins instead.
-    // On a tie (equal reps from independent study) take the lower score to stay
-    // conservative rather than silently promote a card that may have been missed.
     const localScore = local.scores[kana] ?? 4;
     const remoteScore = remote.scores[kana] ?? 4;
     if (localSeen > remoteSeen) {
@@ -42,17 +41,33 @@ export function mergeProgress(
     } else if (remoteTime == null) {
       merged.avgTimes[kana] = localTime;
     } else {
-      // avgTime from the same side as the winning score keeps the data consistent.
       merged.avgTimes[kana] =
         localSeen >= remoteSeen ? localTime : remoteTime;
     }
   }
 
-  return normalizeProgress({
-    ...merged,
-    totalAnswers: Math.max(local.totalAnswers, remote.totalAnswers),
-    totalCorrect: Math.max(local.totalCorrect, remote.totalCorrect),
-    bestStreak: Math.max(local.bestStreak, remote.bestStreak),
-    totalRecallTime: Math.max(local.totalRecallTime, remote.totalRecallTime),
-  });
+  return normalizeProgress(
+    {
+      ...merged,
+      totalAnswers: Math.max(local.totalAnswers, remote.totalAnswers),
+      totalCorrect: Math.max(local.totalCorrect, remote.totalCorrect),
+      bestStreak: Math.max(local.bestStreak, remote.bestStreak),
+      totalRecallTime: Math.max(local.totalRecallTime, remote.totalRecallTime),
+    },
+    mode,
+  );
+}
+
+export function mergeDualProgress(
+  local: DualProgress,
+  remote: DualProgress,
+): DualProgress {
+  return {
+    hiragana: mergeProgress(local.hiragana, remote.hiragana, "hiragana"),
+    katakana: mergeProgress(local.katakana, remote.katakana, "katakana"),
+  };
+}
+
+export function emptyDualProgress(): DualProgress {
+  return createDefaultDualProgress();
 }

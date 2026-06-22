@@ -1,4 +1,6 @@
-import { ALL_CARDS } from "@/lib/hiragana";
+import { getAllCards, type SyllabaryMode } from "@/lib/syllabary";
+
+export type { SyllabaryMode } from "@/lib/syllabary";
 
 export type ProgressState = {
   scores: Record<string, number>;
@@ -9,6 +11,8 @@ export type ProgressState = {
   allTimeSeen: Record<string, number>;
   totalRecallTime: number;
 };
+
+export type DualProgress = Record<SyllabaryMode, ProgressState>;
 
 export type ActiveRound = {
   id: string;
@@ -23,15 +27,16 @@ export type ActiveRound = {
 };
 
 export type AppSession = {
-  progress: ProgressState;
+  mode: SyllabaryMode;
+  progress: DualProgress;
   round: ActiveRound | null;
 };
 
-export function createDefaultProgress(): ProgressState {
+export function createDefaultProgress(mode: SyllabaryMode): ProgressState {
   const scores: Record<string, number> = {};
   const avgTimes: Record<string, number | null> = {};
 
-  for (const card of ALL_CARDS) {
+  for (const card of getAllCards(mode)) {
     scores[card.k] = 4;
     avgTimes[card.k] = null;
   }
@@ -47,7 +52,17 @@ export function createDefaultProgress(): ProgressState {
   };
 }
 
-export function normalizeProgress(progress: ProgressState): ProgressState {
+export function createDefaultDualProgress(): DualProgress {
+  return {
+    hiragana: createDefaultProgress("hiragana"),
+    katakana: createDefaultProgress("katakana"),
+  };
+}
+
+export function normalizeProgress(
+  progress: ProgressState,
+  mode: SyllabaryMode,
+): ProgressState {
   const next = {
     ...progress,
     scores: { ...progress.scores },
@@ -55,7 +70,7 @@ export function normalizeProgress(progress: ProgressState): ProgressState {
     allTimeSeen: { ...(progress.allTimeSeen || {}) },
   };
 
-  for (const card of ALL_CARDS) {
+  for (const card of getAllCards(mode)) {
     if (next.scores[card.k] == null) next.scores[card.k] = 4;
     if (next.avgTimes[card.k] === undefined) next.avgTimes[card.k] = null;
   }
@@ -64,9 +79,14 @@ export function normalizeProgress(progress: ProgressState): ProgressState {
   return next;
 }
 
+export function getSessionProgress(session: AppSession): ProgressState {
+  return session.progress[session.mode];
+}
+
 export function createDefaultSession(): AppSession {
   return {
-    progress: createDefaultProgress(),
+    mode: "hiragana",
+    progress: createDefaultDualProgress(),
     round: null,
   };
 }

@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
-import { getGroupNames } from "@/lib/hiragana";
+
+import { readPlaySession } from "@/lib/session";
+import { getGroupNames } from "@/lib/syllabary";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  return NextResponse.json({ groups: getGroupNames() });
+  const session = await readPlaySession();
+  return NextResponse.json({
+    mode: session.mode,
+    groups: getGroupNames(session.mode),
+  });
 }

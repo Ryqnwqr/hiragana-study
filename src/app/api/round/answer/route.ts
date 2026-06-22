@@ -42,7 +42,7 @@ export async function POST(request: Request) {
       confetti,
       snapshot,
       dotMap: round?.dotMap ?? {},
-      deck: round ? deckToPublicCards(round) : [],
+      deck: round ? deckToPublicCards(round, nextSession.mode) : [],
       roundComplete: !round?.deck.length,
     });
   } catch (error) {
